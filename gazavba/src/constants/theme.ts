@@ -7,10 +7,10 @@ export const palette = {
   amber:   "#F3C323",
   bgLight: "#F7F7F7",
   bgDark:  "#0F1115",
-  text:    "#111",
+  text:    "#111111",
   subtext: "#77838F",
   bubbleMe:   "#DCF8C6",
-  bubbleThem: "#FFFFFF",
+  bubbleThem: "#FFFFFF"
 };
 
 export type Theme = {
@@ -35,6 +35,6 @@ export const getTheme = (scheme: ColorSchemeName): Theme => {
     bubbleMe: dark ? "#214C38" : palette.bubbleMe,
     bubbleThem: dark ? "#1A1E25" : "#FFFFFF",
     tabActive: palette.mint,
-    tabInactive: dark ? "#9AA4AE" : palette.subtext,
+    tabInactive: dark ? "#9AA4AE" : palette.subtext
   };
 };

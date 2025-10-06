@@ -1,53 +1,40 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
+import { ColorSchemeName } from "react-native";
 
-import { Platform } from 'react-native';
-
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
-
-export const Colors = {
-  light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
-  },
-  dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-  },
+export const palette = {
+  primary: "#0C3B2E",
+  accent:  "#1F6B4F",
+  mint:    "#6CC16C",
+  amber:   "#F3C323",
+  bgLight: "#F7F7F7",
+  bgDark:  "#0F1115",
+  text:    "#111111",
+  subtext: "#77838F",
+  bubbleMe:   "#DCF8C6",
+  bubbleThem: "#FFFFFF",
 };
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  },
-});
+export type Theme = {
+  bg: string; card: string; text: string; subtext: string;
+  primary: string; accent: string; mint: string; amber: string;
+  hairline: string; bubbleMe: string; bubbleThem: string;
+  tabActive: string; tabInactive: string;
+};
+
+export const getTheme = (scheme: ColorSchemeName): Theme => {
+  const dark = scheme === "dark";
+  return {
+    bg: dark ? palette.bgDark : "#FFFFFF",
+    card: dark ? "#171A20" : "#FFFFFF",
+    text: dark ? "#EDEDED" : palette.text,
+    subtext: dark ? "#A9B2BD" : palette.subtext,
+    primary: palette.primary,
+    accent: palette.accent,
+    mint: palette.mint,
+    amber: palette.amber,
+    hairline: dark ? "#22262E" : "#E9ECEF",
+    bubbleMe: dark ? "#214C38" : palette.bubbleMe,
+    bubbleThem: dark ? "#1A1E25" : "#FFFFFF",
+    tabActive: palette.mint,
+    tabInactive: dark ? "#9AA4AE" : palette.subtext,
+  };
+};
