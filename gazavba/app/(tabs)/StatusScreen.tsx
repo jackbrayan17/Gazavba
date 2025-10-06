@@ -1,28 +1,24 @@
-import React from 'react';
-import { View, Text, Image, FlatList, TouchableOpacity } from 'react-native';
+import React from "react";
+import { View, Text, ScrollView, Image, StatusBar } from "react-native";
 
 const statuses = [
-  { id: '1', name: 'You', image: 'https://i.pravatar.cc/150?img=1', time: 'Just now' },
-  { id: '2', name: 'Marcus', image: 'https://i.pravatar.cc/150?img=4', time: 'Today, 9:00 AM' },
-  { id: '3', name: 'Brenda', image: 'https://i.pravatar.cc/150?img=6', time: 'Yesterday, 8:00 PM' },
+  { id: 1, name: "Brenda", time: "Today, 08:45", image: "https://i.pravatar.cc/150?img=3" },
+  { id: 2, name: "Marcus", time: "Yesterday, 22:00", image: "https://i.pravatar.cc/150?img=5" },
 ];
 
 export default function StatusScreen() {
   return (
-    <View className="flex-1 bg-white">
-      <FlatList
-        data={statuses}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity className="flex-row items-center p-3 border-b border-gray-200">
-            <Image source={{ uri: item.image }} className="w-14 h-14 rounded-full border-2 border-green-500 mr-3" />
-            <View>
-              <Text className="font-bold text-lg">{item.name}</Text>
-              <Text className="text-gray-500 text-sm">{item.time}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
-    </View>
+    <ScrollView style={{ flex: 1, backgroundColor: "#fff", paddingTop: StatusBar.currentHeight || 40 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700", margin: 20 }}>Status</Text>
+      {statuses.map((status) => (
+        <View key={status.id} style={{ flexDirection: "row", alignItems: "center", marginBottom: 15, paddingHorizontal: 20 }}>
+          <Image source={{ uri: status.image }} style={{ width: 60, height: 60, borderRadius: 30, marginRight: 15 }} />
+          <View>
+            <Text style={{ fontWeight: "bold", fontSize: 16 }}>{status.name}</Text>
+            <Text style={{ color: "gray" }}>{status.time}</Text>
+          </View>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
