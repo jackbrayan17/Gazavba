@@ -1,30 +1,31 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, FlatList, Image, Animated, Easing } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, FlatList, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { getChatById, getMessagesForChat } from "../../src/data/mockData";
 import { ThemeCtx } from "../_layout";
 
 type Msg = { id: string; me: boolean; text: string };
 
-const initial: Msg[] = [
-  { id: "m1", me: false, text: "Hey, how are you?" },
-  { id: "m2", me: true,  text: "Great! Building Gazavba 🚀" },
-  { id: "m3", me: false, text: "Let’s ship it." }
-];
-
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const t = useContext(ThemeCtx);
   const [msg, setMsg] = useState("");
-  const [data, setData] = useState<Msg[]>(initial);
+  const [data, setData] = useState<Msg[]>([]);
+  const chat = useMemo(() => (id ? getChatById(id) : undefined), [id]);
   const menuScale = useRef(new Animated.Value(0)).current;
   const [open, setOpen] = useState(false);
   const enter = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(enter, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
-  }, []);
+    if (id) {
+      const msgs = getMessagesForChat(id).map(m => ({ id: m.id, me: m.fromMe, text: m.text }));
+      setData(msgs);
+    }
+  }, [id]);
 
   const toggleMenu = () => {
     setOpen((v) => {
@@ -59,31 +60,43 @@ export default function ChatDetailScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
       <Animated.View style={{ transform: [{ translateY: enter.interpolate({ inputRange: [0,1], outputRange: [6,0] }) }], opacity: enter }}>
-        {/* Header */}
+        {/* Header with back, avatar, name, online */}
         <View style={{ backgroundColor: t.primary, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Image source={require("../../assets/images/logo.png")} style={{ width: 34, height: 34, borderRadius: 8, marginRight: 10 }} />
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Chat {id}</Text>
-          </View>
-          <View>
-            <TouchableOpacity onPress={toggleMenu}>
-              <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+            <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 8, padding: 6 }}>
+              <Ionicons name="chevron-back" color="#fff" size={22} />
             </TouchableOpacity>
-
-            {open && (
-              <TouchableOpacity activeOpacity={1} onPress={toggleMenu} style={{ position: "absolute", top: 28, right: 0 }}>
-                <Animated.View style={[{ backgroundColor: t.card, borderRadius: 12, elevation: 6, borderWidth: 1, borderColor: t.hairline, overflow: "hidden" }, menuStyle]}>
-                  <TouchableOpacity style={{ padding: 14, minWidth: 160 }}>
-                    <Text style={{ color: t.text, fontWeight: "600" }}>Settings</Text>
-                  </TouchableOpacity>
-                  <View style={{ height: 1, backgroundColor: t.hairline }} />
-                  <TouchableOpacity style={{ padding: 14 }}>
-                    <Text style={{ color: t.text, fontWeight: "600" }}>About Us</Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              </TouchableOpacity>
+            {chat && (
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View>
+                  <Image source={{ uri: chat.user.avatar }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} />
+                  {chat.user.isOnline && (
+                    <View style={{ position: "absolute", right: -2, bottom: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: "#2ECC71", borderWidth: 2, borderColor: t.primary }} />
+                  )}
+                </View>
+                <View style={{ marginLeft: 10 }}>
+                  <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>{chat.user.name}</Text>
+                  <Text style={{ color: "#E6FCF5", fontSize: 12 }}>{chat.user.isOnline ? "Online" : "Last seen recently"}</Text>
+                </View>
+              </View>
             )}
           </View>
+          <TouchableOpacity onPress={toggleMenu}>
+            <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+          </TouchableOpacity>
+          {open && (
+            <TouchableOpacity activeOpacity={1} onPress={toggleMenu} style={{ position: "absolute", top: 48, right: 12 }}>
+              <Animated.View style={[{ backgroundColor: t.card, borderRadius: 12, elevation: 6, borderWidth: 1, borderColor: t.hairline, overflow: "hidden" }, menuStyle]}>
+                <TouchableOpacity style={{ padding: 14, minWidth: 160 }}>
+                  <Text style={{ color: t.text, fontWeight: "600" }}>Settings</Text>
+                </TouchableOpacity>
+                <View style={{ height: 1, backgroundColor: t.hairline }} />
+                <TouchableOpacity style={{ padding: 14 }}>
+                  <Text style={{ color: t.text, fontWeight: "600" }}>About Us</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Messages */}

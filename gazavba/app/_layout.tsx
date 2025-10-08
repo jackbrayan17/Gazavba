@@ -1,5 +1,5 @@
-import React, { createContext, useMemo } from "react";
 import { Stack } from "expo-router";
+import React, { createContext, useMemo } from "react";
 import { useColorScheme } from "react-native";
 import { getTheme, Theme } from "../src/constants/theme";
 
@@ -13,7 +13,7 @@ export default function RootLayout() {
     <ThemeCtx.Provider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="contacts/index" />
+        <Stack.Screen name="contacts/index" options={{ headerShown: true, headerTitle: "Contacts" }} />
         <Stack.Screen name="about" />
         <Stack.Screen name="auth/LoginScreen" />
         <Stack.Screen name="auth/RegisterScreen" />

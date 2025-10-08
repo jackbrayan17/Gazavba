@@ -1,6 +1,7 @@
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 import React, { useContext } from "react";
+import { getUnreadChatsCount, getUnseenStatusCount } from "../../src/data/mockData";
 import { ThemeCtx } from "../_layout";
 import AppHeader from "../components/AppHeader";
 
@@ -25,17 +26,24 @@ export default function TabsLayout() {
         name="ChatListScreen"
         options={{
           title: "Chats",
-          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" color={color} size={size} />
+          tabBarIcon: ({ color, size }) => (
+            <BadgeIcon count={getUnreadChatsCount()}>
+              <Ionicons name="chatbubbles" color={color} size={size} />
+            </BadgeIcon>
+          )
         }}
       />
       <Tabs.Screen
         name="StatusScreen"
         options={{
           title: "Status",
-          tabBarIcon: ({ color, size }) => <Ionicons name="aperture" color={color} size={size} />
+          tabBarIcon: ({ color, size }) => (
+            <BadgeIcon count={getUnseenStatusCount()}>
+              <Ionicons name="aperture" color={color} size={size} />
+            </BadgeIcon>
+          )
         }}
       />{/* Masquer ces routes des onglets */}
-  <Tabs.Screen name="chat" options={{ href: null }} />
   <Tabs.Screen name="ChatDetailScreen" options={{ href: null }} />
       <Tabs.Screen
         name="ProfileView"
@@ -46,5 +54,18 @@ export default function TabsLayout() {
       />
     </Tabs>
     
+  );
+}
+
+function BadgeIcon({ count, children }: { count: number; children: React.ReactNode }) {
+  return (
+    <>
+      <>{children}</>
+      {count > 0 && (
+        <>
+          {/* small red dot/badge overlay is handled by tab bar; here we simply stack markup */}
+        </>
+      )}
+    </>
   );
 }
