@@ -8,13 +8,11 @@
     "scheme": "gazavba",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "splash": {
       "image": "./assets/images/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jackbrayan1707.gazavba",
@@ -24,7 +22,6 @@
         "NSPhotoLibraryUsageDescription": "Gazavba needs access to your photos to share images in chat."
       }
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
@@ -33,21 +30,19 @@
       "package": "com.jackbrayan1707.gazavba",
       "permissions": [
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "RECORD_AUDIO",
         "VIBRATE",
-        "INTERNET"
+        "INTERNET",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/logo.png"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -63,20 +58,23 @@
         }
       ],
       "expo-font",
-      "expo-image-picker",
-      "expo-notifications"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Autoriser l’accès à vos photos pour les importer dans l’application."
+        }
+      ],
+      "expo-notifications",
+      "expo-secure-store"
     ],
-
     "updates": {
       "url": "https://u.expo.dev/",
       "fallbackToCacheTimeout": 0
     },
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
-
     "extra": {
       "eas": {
         "projectId": "YOUR_PROJECT_ID"

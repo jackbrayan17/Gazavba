@@ -3,7 +3,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, FlatList, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getChatById, getMessagesForChat } from "../../src/data/mockData";
+import { useAuth } from "../../src/contexts/AuthContext";
+import ApiService from "../../src/services/api";
+import SocketService from "../../src/services/socket";
 import { ThemeCtx } from "../_layout";
 
 type Msg = { id: string; me: boolean; text: string };
@@ -12,9 +14,11 @@ export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const t = useContext(ThemeCtx);
+  const { user } = useAuth();
   const [msg, setMsg] = useState("");
   const [data, setData] = useState<Msg[]>([]);
-  const chat = useMemo(() => (id ? getChatById(id) : undefined), [id]);
+  const [chat, setChat] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const menuScale = useRef(new Animated.Value(0)).current;
   const [open, setOpen] = useState(false);
   const enter = useRef(new Animated.Value(0)).current;
@@ -22,10 +26,56 @@ export default function ChatDetailScreen() {
   useEffect(() => {
     Animated.timing(enter, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
     if (id) {
-      const msgs = getMessagesForChat(id).map(m => ({ id: m.id, me: m.fromMe, text: m.text }));
-      setData(msgs);
+      loadChatData();
+      setupSocketListeners();
     }
+    
+    return () => {
+      SocketService.removeAllListeners();
+    };
   }, [id]);
+
+  const loadChatData = async () => {
+    try {
+      setLoading(true);
+      const [chatData, messages] = await Promise.all([
+        ApiService.getChat(id!),
+        ApiService.getMessages(id!)
+      ]);
+      
+      setChat(chatData);
+      const formattedMessages = messages.map(m => ({
+        id: m.id,
+        me: m.senderId === user?.id,
+        text: m.text,
+        senderName: m.senderName,
+        senderAvatar: m.senderAvatar
+      }));
+      setData(formattedMessages);
+      
+      // Mark chat as read
+      await ApiService.markChatAsRead(id!);
+    } catch (error) {
+      console.error('Failed to load chat data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setupSocketListeners = () => {
+    SocketService.onNewMessage((messageData) => {
+      if (messageData.chatId === id) {
+        const newMessage = {
+          id: messageData.message.id,
+          me: messageData.message.senderId === user?.id,
+          text: messageData.message.text,
+          senderName: messageData.message.senderName,
+          senderAvatar: messageData.message.senderAvatar
+        };
+        setData(prev => [...prev, newMessage]);
+      }
+    });
+  };
 
   const toggleMenu = () => {
     setOpen((v) => {
@@ -50,11 +100,25 @@ export default function ChatDetailScreen() {
     }
   ]), [menuScale]);
 
-  const send = () => {
+  const send = async () => {
     const text = msg.trim();
-    if (!text) return;
-    setData((d) => [...d, { id: String(Date.now()), me: true, text }]);
-    setMsg("");
+    if (!text || !id || !user) return;
+    
+    try {
+      // Send via Socket.IO for real-time delivery
+      SocketService.sendMessage(id, user.id, text);
+      
+      // Also send via API as backup
+      await ApiService.sendMessage({
+        chatId: id,
+        text,
+        messageType: 'text'
+      });
+      
+      setMsg("");
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   return (

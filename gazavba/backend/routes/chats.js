@@ -1,0 +1,128 @@
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const Chat = require('../models/Chat');
+const Message = require('../models/Message');
+const router = express.Router();
+
+// Middleware to verify JWT
+const authenticateToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ error: 'Invalid token' });
+    req.userId = decoded.userId;
+    next();
+  });
+};
+
+// Get user's chats
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const chats = await Chat.getByUserId(req.userId);
+    res.json(chats);
+  } catch (error) {
+    console.error('Get chats error:', error);
+    res.status(500).json({ error: 'Failed to fetch chats' });
+  }
+});
+
+// Create new chat
+router.post('/', authenticateToken, async (req, res) => {
+  try {
+    const { name, type = 'direct', participants } = req.body;
+    
+    if (!participants || participants.length === 0) {
+      return res.status(400).json({ error: 'Participants required' });
+    }
+
+    // For direct chats, check if chat already exists
+    if (type === 'direct' && participants.length === 1) {
+      const existingChat = await Chat.getDirectChat(req.userId, participants[0]);
+      if (existingChat) {
+        return res.json(existingChat);
+      }
+    }
+
+    const chat = await Chat.create({
+      name,
+      type,
+      createdBy: req.userId,
+      participants: [req.userId, ...participants]
+    });
+
+    res.status(201).json(chat);
+  } catch (error) {
+    console.error('Create chat error:', error);
+    res.status(500).json({ error: 'Failed to create chat' });
+  }
+});
+
+// Get chat by ID
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const chat = await Chat.getById(req.params.id);
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    const participants = await Chat.getParticipants(req.params.id);
+    res.json({ ...chat, participants });
+  } catch (error) {
+    console.error('Get chat error:', error);
+    res.status(500).json({ error: 'Failed to fetch chat' });
+  }
+});
+
+// Get chat participants
+router.get('/:id/participants', authenticateToken, async (req, res) => {
+  try {
+    const participants = await Chat.getParticipants(req.params.id);
+    res.json(participants);
+  } catch (error) {
+    console.error('Get participants error:', error);
+    res.status(500).json({ error: 'Failed to fetch participants' });
+  }
+});
+
+// Add participant to chat
+router.post('/:id/participants', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID required' });
+    }
+
+    const participant = await Chat.addParticipant(req.params.id, userId);
+    res.status(201).json(participant);
+  } catch (error) {
+    console.error('Add participant error:', error);
+    res.status(500).json({ error: 'Failed to add participant' });
+  }
+});
+
+// Remove participant from chat
+router.delete('/:id/participants/:userId', authenticateToken, async (req, res) => {
+  try {
+    await Chat.removeParticipant(req.params.id, req.params.userId);
+    res.json({ message: 'Participant removed' });
+  } catch (error) {
+    console.error('Remove participant error:', error);
+    res.status(500).json({ error: 'Failed to remove participant' });
+  }
+});
+
+// Mark chat as read
+router.post('/:id/read', authenticateToken, async (req, res) => {
+  try {
+    await Message.markChatAsRead(req.params.id, req.userId);
+    res.json({ message: 'Chat marked as read' });
+  } catch (error) {
+    console.error('Mark chat as read error:', error);
+    res.status(500).json({ error: 'Failed to mark chat as read' });
+  }
+});
+
+module.exports = router;

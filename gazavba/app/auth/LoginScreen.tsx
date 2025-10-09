@@ -1,95 +1,151 @@
-import React, { useContext, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
-import { ThemeCtx } from "../_layout";
-import { StatusBar } from "expo-status-bar";
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useContext, useState } from 'react';
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../src/contexts/AuthContext';
+import { ThemeCtx } from '../_layout';
 
 export default function LoginScreen() {
-  const theme = useContext(ThemeCtx);
+  const { login } = useAuth();
   const router = useRouter();
-  const [phone, setPhone] = useState("");
+  const t = useContext(ThemeCtx);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+    const result = await login({ email, password });
+    setLoading(false);
+
+    if (result.success) {
+      router.replace('/(tabs)/ChatListScreen');
+    } else {
+      Alert.alert('Login Failed', result.error);
+    }
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <StatusBar style={theme.bg === theme.bgDark ? "light" : "dark"} />
-      <Image
-        source={require("../../assets/images/logo.png")}
-        style={styles.logo}
-      />
-      <Text style={[styles.title, { color: theme.primary }]}>
-        Welcome to Gazavba
-      </Text>
-      <Text style={[styles.subtitle, { color: theme.subtext }]}>
-        Connect easily with your contacts
-      </Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: t.primary }]}>Welcome to Gazavba</Text>
+          <Text style={[styles.subtitle, { color: t.subtext }]}>Sign in to continue</Text>
+        </View>
 
-      <TextInput
-        placeholder="Enter your phone number"
-        placeholderTextColor={theme.subtext}
-        keyboardType="phone-pad"
-        value={phone}
-        onChangeText={setPhone}
-        style={[
-          styles.input,
-          {
-            backgroundColor: theme.card,
-            color: theme.text,
-            borderColor: theme.hairline,
-          },
-        ]}
-      />
+        <View style={styles.form}>
+          <View style={[styles.inputContainer, { backgroundColor: t.card, borderColor: t.hairline }]}>
+            <Ionicons name="mail" size={20} color={t.subtext} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: t.text }]}
+              placeholder="Email"
+              placeholderTextColor={t.subtext}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
 
-      <TouchableOpacity
-        onPress={() =>
-          router.push({ pathname: "(auth)/RegisterScreen", params: { phone } })
-        }
-        style={[styles.button, { backgroundColor: theme.mint }]}
-      >
-        <Text style={styles.buttonText}>Continue</Text>
-      </TouchableOpacity>
-    </View>
+          <View style={[styles.inputContainer, { backgroundColor: t.card, borderColor: t.hairline }]}>
+            <Ionicons name="lock-closed" size={20} color={t.subtext} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: t.text }]}
+              placeholder="Password"
+              placeholderTextColor={t.subtext}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.loginButton, { backgroundColor: t.primary }]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            <Text style={styles.loginButtonText}>
+              {loading ? 'Signing In...' : 'Sign In'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.registerLink}
+            onPress={() => router.push('/auth/RegisterScreen')}
+          >
+            <Text style={[styles.registerText, { color: t.subtext }]}>
+              Don't have an account? <Text style={{ color: t.primary }}>Sign up</Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
   },
-  logo: {
-    width: 120,
-    height: 120,
-    borderRadius: 24,
-    marginBottom: 20,
+  content: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
   },
   title: {
-    fontSize: 26,
-    fontWeight: "800",
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    marginVertical: 10,
+  },
+  form: {
+    width: '100%',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    height: 50,
+  },
+  inputIcon: {
+    marginRight: 12,
   },
   input: {
-    width: "100%",
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
+    flex: 1,
     fontSize: 16,
-    marginTop: 24,
   },
-  button: {
-    marginTop: 28,
-    paddingVertical: 14,
-    width: "100%",
-    borderRadius: 14,
-    alignItems: "center",
+  loginButton: {
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
   },
-  buttonText: {
-    color: "#fff",
+  loginButtonText: {
+    color: '#fff',
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: '600',
+  },
+  registerLink: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  registerText: {
+    fontSize: 14,
   },
 });
