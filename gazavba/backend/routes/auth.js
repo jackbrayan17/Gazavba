@@ -7,8 +7,8 @@ const router = express.Router();
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
-    
+    const { name, email, phone, password, avatar, role } = req.body;
+
     // Check if user already exists
     const existingUser = await User.getByEmail(email) || await User.getByPhone(phone);
     if (existingUser) {
@@ -23,14 +23,17 @@ router.post('/register', async (req, res) => {
       name,
       email,
       phone,
-      password: hashedPassword
+      avatar,
+      password: hashedPassword,
+      role: role || 'user',
+      isSuperAdmin: false,
     });
 
     // Generate JWT
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
-      user: { id: user.id, name: user.name, email: user.email, phone: user.phone },
+      user: { id: user.id, name: user.name, email: user.email, phone: user.phone, avatar: user.avatar, role: user.role },
       token
     });
   } catch (error) {
@@ -42,10 +45,17 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    
-    // Find user
-    const user = await User.getByEmail(email);
+    const { identifier, email, phone, password } = req.body;
+
+    const loginValue = identifier || email || phone;
+
+    if (!loginValue || !password) {
+      return res.status(400).json({ error: 'Identifier and password are required' });
+    }
+
+    // Find user by email or phone
+    const lookup = loginValue.includes('@') ? User.getByEmail : User.getByPhone;
+    const user = await lookup.call(User, loginValue);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -63,7 +73,15 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
-      user: { id: user.id, name: user.name, email: user.email, phone: user.phone, avatar: user.avatar },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        avatar: user.avatar,
+        role: user.role,
+        isSuperAdmin: !!user.isSuperAdmin,
+      },
       token
     });
   } catch (error) {

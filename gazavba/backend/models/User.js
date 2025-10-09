@@ -1,18 +1,42 @@
 const { db } = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 
+const sanitizeUser = (user) => {
+  if (!user) return null;
+  const { password, ...rest } = user;
+  return rest;
+};
+
 class User {
   static async create(userData) {
-    const { name, email, phone, avatar } = userData;
-    const id = uuidv4();
-    
+    const {
+      id = uuidv4(),
+      name,
+      email,
+      phone,
+      avatar = null,
+      password = null,
+      role = 'user',
+      isSuperAdmin = false,
+    } = userData;
+
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO users (id, name, email, phone, avatar) VALUES (?, ?, ?, ?, ?)`,
-        [id, name, email, phone, avatar],
+        `INSERT INTO users (id, name, email, phone, avatar, password, role, isSuperAdmin)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          name,
+          email,
+          phone,
+          avatar,
+          password,
+          role,
+          isSuperAdmin ? 1 : 0,
+        ],
         function(err) {
           if (err) reject(err);
-          else resolve({ id, ...userData });
+          else resolve(sanitizeUser({ id, ...userData }));
         }
       );
     });
@@ -22,7 +46,7 @@ class User {
     return new Promise((resolve, reject) => {
       db.get(`SELECT * FROM users WHERE id = ?`, [id], (err, row) => {
         if (err) reject(err);
-        else resolve(row);
+        else resolve(sanitizeUser(row));
       });
     });
   }
@@ -49,14 +73,18 @@ class User {
     const fields = Object.keys(updates);
     const values = Object.values(updates);
     const setClause = fields.map(field => `${field} = ?`).join(', ');
-    
+
+    if (fields.length === 0) {
+      return this.getById(id);
+    }
+
     return new Promise((resolve, reject) => {
       db.run(
         `UPDATE users SET ${setClause}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
         [...values, id],
         function(err) {
           if (err) reject(err);
-          else resolve({ id, ...updates });
+          else User.getById(id).then(resolve).catch(reject);
         }
       );
     });
@@ -77,17 +105,22 @@ class User {
 
   static async getAll() {
     return new Promise((resolve, reject) => {
-      db.all(`SELECT * FROM users ORDER BY name`, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
+      db.all(
+        `SELECT id, name, email, phone, avatar, role, isSuperAdmin, isOnline, lastSeen, createdAt, updatedAt
+         FROM users ORDER BY name`,
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
+        }
+      );
     });
   }
 
   static async search(query) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT * FROM users WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?`,
+        `SELECT id, name, email, phone, avatar, role, isSuperAdmin, isOnline, lastSeen, createdAt, updatedAt
+         FROM users WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?`,
         [`%${query}%`, `%${query}%`, `%${query}%`],
         (err, rows) => {
           if (err) reject(err);
