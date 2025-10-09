@@ -78,8 +78,9 @@ class Chat {
   static async getParticipants(chatId) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT u.*, cp.joinedAt FROM users u 
-         JOIN chat_participants cp ON u.id = cp.userId 
+        `SELECT u.id, u.name, u.email, u.phone, u.avatar, u.role, u.isSuperAdmin, u.isOnline, u.lastSeen, cp.userId, cp.joinedAt
+         FROM users u
+         JOIN chat_participants cp ON u.id = cp.userId
          WHERE cp.chatId = ?`,
         [chatId],
         (err, rows) => {

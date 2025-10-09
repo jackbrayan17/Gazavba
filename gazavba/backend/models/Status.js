@@ -70,9 +70,10 @@ class Status {
   static async getViewers(statusId) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT u.*, sv.viewedAt FROM users u 
-         JOIN status_views sv ON u.id = sv.viewerId 
-         WHERE sv.statusId = ? 
+        `SELECT u.id, u.name, u.email, u.phone, u.avatar, u.role, u.isSuperAdmin, u.isOnline, u.lastSeen, sv.viewedAt
+         FROM users u
+         JOIN status_views sv ON u.id = sv.viewerId
+         WHERE sv.statusId = ?
          ORDER BY sv.viewedAt DESC`,
         [statusId],
         (err, rows) => {

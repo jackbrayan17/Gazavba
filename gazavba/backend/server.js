@@ -3,6 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const { initDatabase } = require('./config/database');
 require('dotenv').config();
 
 const app = express();
@@ -109,8 +110,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Socket.IO server ready`);
-  console.log(`Accessible at: http://192.168.1.161:${PORT}`);
-});
+initDatabase()
+  .then(() => {
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Socket.IO server ready`);
+      console.log(`Accessible at: http://192.168.1.161:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error('Failed to initialize database', error);
+    process.exit(1);
+  });
