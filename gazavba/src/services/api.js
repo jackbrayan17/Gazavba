@@ -1,24 +1,68 @@
 // src/services/api.js
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 // If you prefer AsyncStorage: import AsyncStorage from "@react-native-async-storage/async-storage";
 
-function resolveBaseUrl() {
-  // 1) Use env if provided (set EXPO_PUBLIC_API_URL in app.config.js or .env)
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL.replace(/\/+$/, "");
+const trimTrailingSlash = (value) => value.replace(/\/+$/, "");
+const API_ENV_URL = process.env.EXPO_PUBLIC_API_URL
+  ? trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL)
+  : null;
+const SOCKET_ENV_URL = process.env.EXPO_PUBLIC_SOCKET_URL
+  ? trimTrailingSlash(process.env.EXPO_PUBLIC_SOCKET_URL)
+  : null;
 
-  // 2) Fallbacks for local dev
-  // - Android emulator: use 10.0.2.2
-  // - iOS simulator: use localhost
-  // - Real device: replace with your machine IP on the same Wi-Fi
+const resolveHostFromExpo = () => {
+  const expoConfig = Constants?.expoConfig ?? {};
+  const candidates = [
+    expoConfig.hostUri,
+    expoConfig.extra?.expoGo?.debuggerHost,
+    expoConfig.extra?.expoGo?.hostUri,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate) {
+      const host = candidate.split(":")[0];
+      if (host) {
+        return `http://${host}:3000`;
+      }
+    }
+  }
+  return null;
+};
+
+function resolveBaseUrl() {
+  if (API_ENV_URL) return API_ENV_URL;
+
+  const expoHost = resolveHostFromExpo();
+  if (expoHost) return `${expoHost}/api`;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:3000/api`;
+  }
+
   const host =
     Platform.OS === "android" ? "10.0.2.2" :
     Platform.OS === "ios" ? "localhost" :
-    "192.168.1.161"; // <- your current LAN IP; update if it changes
+    "127.0.0.1";
   return `http://${host}:3000/api`;
 }
 
 const BASE_URL = resolveBaseUrl();
+
+const resolveSocketBaseUrl = () => {
+  if (SOCKET_ENV_URL) return SOCKET_ENV_URL;
+
+  if (BASE_URL.endsWith("/api")) {
+    return BASE_URL.slice(0, -4);
+  }
+  return BASE_URL;
+};
+
+const SOCKET_BASE_URL = resolveSocketBaseUrl();
+
+export const getApiBaseUrl = () => BASE_URL;
+export const getSocketBaseUrl = () => SOCKET_BASE_URL;
 
 // ---- Storage helpers ----
 const TOKEN_KEY = "access_token";
@@ -154,18 +198,27 @@ class ApiService {
     return this.request("/users/profile", { method: "PUT", body: updates, auth: true });
   }
 
-  async uploadAvatar(imageUri) {
+  async uploadAvatar(image) {
+    const payload = typeof image === 'string' ? { uri: image } : image;
     const formData = new FormData();
     formData.append("avatar", {
-      uri: imageUri,
-      type: "image/jpeg",
-      name: "avatar.jpg",
+      uri: payload?.uri,
+      type: payload?.mimeType || "image/jpeg",
+      name: payload?.name || "avatar.jpg",
     });
     return this.request("/users/avatar", { method: "POST", body: formData, isFormData: true, auth: true });
   }
 
   async setOnlineStatus(isOnline) {
     return this.request("/users/online", { method: "POST", body: { isOnline }, auth: true });
+  }
+
+  async matchContacts(phoneNumbers = []) {
+    return this.request("/users/match-contacts", {
+      method: "POST",
+      body: { contacts: phoneNumbers },
+      auth: true,
+    });
   }
 
   // ---------- Chats ----------
@@ -216,15 +269,15 @@ class ApiService {
   }
 
   async createTextStatus(content) {
-    return this.request("/statuses/text", { method: "POST", body: { content }, auth: true });
+    return this.request("/statuses/text", { method: "POST", body: { content: content?.trim?.() ?? content }, auth: true });
   }
 
-  async createMediaStatus(imageUri, content = "") {
+  async createMediaStatus({ uri, mimeType = "image/jpeg", name = "status.jpg", content = "" }) {
     const formData = new FormData();
     formData.append("media", {
-      uri: imageUri,
-      type: "image/jpeg",
-      name: "status.jpg",
+      uri,
+      type: mimeType,
+      name,
     });
     formData.append("content", content);
     return this.request("/statuses/media", { method: "POST", body: formData, isFormData: true, auth: true });

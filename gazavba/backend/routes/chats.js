@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const Chat = require('../models/Chat');
 const Message = require('../models/Message');
+const { JWT_SECRET } = require('../config/auth');
 const router = express.Router();
 
 // Middleware to verify JWT
@@ -11,7 +12,7 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) return res.status(403).json({ error: 'Invalid token' });
     req.userId = decoded.userId;
     next();
@@ -22,7 +23,31 @@ const authenticateToken = (req, res, next) => {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const chats = await Chat.getByUserId(req.userId);
-    res.json(chats);
+    const enriched = await Promise.all(
+      chats.map(async (chat) => {
+        const participants = await Chat.getParticipants(chat.id);
+        const others = participants.filter((participant) => participant.userId !== req.userId && participant.id !== req.userId);
+        const primary = chat.type === 'direct' ? others[0] : null;
+
+        const displayName =
+          chat.type === 'group'
+            ? chat.name || `Group • ${participants.length} members`
+            : primary?.name || chat.name || 'Conversation';
+
+        const avatar = chat.type === 'group' ? chat.avatar || null : primary?.avatar || null;
+
+        return {
+          ...chat,
+          unreadCount: Number(chat.unreadCount || 0),
+          participants,
+          displayName,
+          avatar,
+          otherParticipant: primary || null,
+        };
+      })
+    );
+
+    res.json(enriched);
   } catch (error) {
     console.error('Get chats error:', error);
     res.status(500).json({ error: 'Failed to fetch chats' });
@@ -69,7 +94,23 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 
     const participants = await Chat.getParticipants(req.params.id);
-    res.json({ ...chat, participants });
+    const others = participants.filter((participant) => participant.userId !== req.userId && participant.id !== req.userId);
+    const primary = chat.type === 'direct' ? others[0] : null;
+
+    const displayName =
+      chat.type === 'group'
+        ? chat.name || `Group • ${participants.length} members`
+        : primary?.name || chat.name || 'Conversation';
+
+    const avatar = chat.type === 'group' ? chat.avatar || null : primary?.avatar || null;
+
+    res.json({
+      ...chat,
+      participants,
+      displayName,
+      avatar,
+      otherParticipant: primary || null,
+    });
   } catch (error) {
     console.error('Get chat error:', error);
     res.status(500).json({ error: 'Failed to fetch chat' });
