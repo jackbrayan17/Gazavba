@@ -48,11 +48,16 @@ async function seedDatabase() {
     ];
 
     const createdUsers = [];
+    const credentialSummary = [
+      { label: 'Super Admin', phone: superAdminPhone, password: 'brayan8003' }
+    ];
+
     for (const userData of users) {
       const existing = await User.getByEmail(userData.email);
       if (existing) {
         console.log(`User already exists: ${existing.name}`);
         createdUsers.push(sanitize(existing));
+        credentialSummary.push({ label: existing.name, phone: existing.phone, password: 'password123' });
         continue;
       }
 
@@ -60,6 +65,7 @@ async function seedDatabase() {
       const user = await User.create({ ...userData, password });
       createdUsers.push(user);
       console.log(`Created user: ${user.name}`);
+      credentialSummary.push({ label: user.name, phone: user.phone, password: 'password123' });
     }
 
     // Set some users as online
@@ -142,6 +148,11 @@ async function seedDatabase() {
     console.log(`Sample chats created: ${sampleChats.length}`);
     console.log('Sample messages created:', messageCount);
     console.log('Sample statuses created:', statuses.length);
+
+    console.log('\nSeed credentials:');
+    credentialSummary.forEach(({ label, phone, password }) => {
+      console.log(`- ${label}: phone ${phone} / password ${password}`);
+    });
 
   } catch (error) {
     console.error('Error seeding database:', error);

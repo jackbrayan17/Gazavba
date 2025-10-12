@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { getSocketBaseUrl } from './api';
 
 class SocketService {
   constructor() {
@@ -12,7 +13,9 @@ class SocketService {
       this.disconnect();
     }
 
-    this.socket = io('http://192.168.1.161:3000', {
+    const socketUrl = getSocketBaseUrl();
+
+    this.socket = io(socketUrl, {
       auth: { token },
       autoConnect: true,
     });

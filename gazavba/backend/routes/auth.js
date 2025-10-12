@@ -2,6 +2,10 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { JWT_SECRET } = require('../config/auth');
+
+const normalizePhone = (value = '') => value.replace(/[^\d+]/g, '').trim();
+const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const router = express.Router();
 
 // Register
@@ -9,28 +13,47 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, phone, password, avatar, role } = req.body;
 
-    // Check if user already exists
-    const existingUser = await User.getByEmail(email) || await User.getByPhone(phone);
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
+    const trimmedName = (name || '').trim();
+    const trimmedEmail = (email || '').trim().toLowerCase();
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!trimmedName || !normalizedPhone || !password) {
+      return res.status(400).json({ error: 'Name, phone number and password are required' });
     }
 
-    // Hash password
+    if (trimmedEmail && !isValidEmail(trimmedEmail)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+
+    let existingUser = null;
+    if (trimmedEmail) {
+      existingUser = await User.getByEmail(trimmedEmail);
+    }
+    if (!existingUser) {
+      existingUser = await User.getByPhone(normalizedPhone);
+    }
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'An account already exists with the provided email or phone number' });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
     const user = await User.create({
-      name,
-      email,
-      phone,
+      name: trimmedName,
+      email: trimmedEmail || null,
+      phone: normalizedPhone,
       avatar,
       password: hashedPassword,
       role: role || 'user',
       isSuperAdmin: false,
     });
 
-    // Generate JWT
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
       user: { id: user.id, name: user.name, email: user.email, phone: user.phone, avatar: user.avatar, role: user.role },
@@ -47,15 +70,17 @@ router.post('/login', async (req, res) => {
   try {
     const { identifier, email, phone, password } = req.body;
 
-    const loginValue = identifier || email || phone;
+    const rawLogin = (identifier || email || phone || '').toString().trim();
 
-    if (!loginValue || !password) {
+    if (!rawLogin || !password) {
       return res.status(400).json({ error: 'Identifier and password are required' });
     }
 
-    // Find user by email or phone
-    const lookup = loginValue.includes('@') ? User.getByEmail : User.getByPhone;
-    const user = await lookup.call(User, loginValue);
+    const lookup = rawLogin.includes('@') ? User.getByEmail : User.getByPhone;
+    const normalizedLogin = rawLogin.includes('@')
+      ? rawLogin.toLowerCase()
+      : normalizePhone(rawLogin);
+    const user = await lookup.call(User, normalizedLogin);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -70,7 +95,7 @@ router.post('/login', async (req, res) => {
     await User.setOnlineStatus(user.id, true);
 
     // Generate JWT
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
       user: {
@@ -98,7 +123,7 @@ router.get('/verify', async (req, res) => {
       return res.status(401).json({ error: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     const user = await User.getById(decoded.userId);
     
     if (!user) {
@@ -106,7 +131,7 @@ router.get('/verify', async (req, res) => {
     }
 
     res.json({ user: { id: user.id, name: user.name, email: user.email, phone: user.phone, avatar: user.avatar } });
-  } catch (error) {
+  } catch (_error) {
     res.status(401).json({ error: 'Invalid token' });
   }
 });
@@ -116,11 +141,11 @@ router.post('/logout', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET);
       await User.setOnlineStatus(decoded.userId, false);
     }
     res.json({ message: 'Logged out successfully' });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Logout failed' });
   }
 });

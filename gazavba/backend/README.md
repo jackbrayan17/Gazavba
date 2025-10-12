@@ -21,18 +21,17 @@ npm install
 ```
 
 2. **Environment setup**
-Create a `.env` file:
+Copy the sample environment file and adjust values as needed:
 ```
-PORT=3000
-JWT_SECRET=your_super_secret_jwt_key_here
-DB_PATH=./database.sqlite
-UPLOAD_PATH=./uploads
+cp .env.example .env
 ```
+The defaults will run the API on port `3000`, store uploads locally and use the bundled SQLite database. Make sure to change `JWT_SECRET` in production.
 
 3. **Initialize database**
 ```bash
 npm run init-db
 ```
+The seed script creates a super admin plus demo users and prints their phone/password pairs when it finishes.
 
 4. **Start server**
 ```bash
