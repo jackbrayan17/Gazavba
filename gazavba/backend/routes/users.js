@@ -1,4 +1,6 @@
+/* eslint-env node */
 const express = require('express');
+const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
@@ -23,9 +25,22 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Configure multer for file uploads
+const resolveUploadDir = (value) => {
+  if (!value) {
+    return path.resolve(process.cwd(), 'uploads');
+  }
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
+};
+
+const uploadDir = resolveUploadDir(process.env.UPLOAD_PATH);
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, process.env.UPLOAD_PATH || './uploads');
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -113,11 +128,38 @@ router.post('/avatar', authenticateToken, upload.single('avatar'), async (req, r
 
     const avatarUrl = `/uploads/${req.file.filename}`;
     await User.update(req.userId, { avatar: avatarUrl });
-    
+
     res.json({ avatar: avatarUrl });
   } catch (error) {
     console.error('Upload avatar error:', error);
     res.status(500).json({ error: 'Failed to upload avatar' });
+  }
+});
+
+router.post('/match-contacts', authenticateToken, async (req, res) => {
+  try {
+    const { contacts } = req.body;
+
+    if (!Array.isArray(contacts)) {
+      return res.status(400).json({ error: 'Contacts array required' });
+    }
+
+    const normalized = contacts
+      .map(contact => normalizePhone(contact))
+      .filter(Boolean);
+
+    if (normalized.length === 0) {
+      return res.json({ matches: [], unmatched: [] });
+    }
+
+    const matches = await User.getByPhones(normalized);
+    const matchSet = new Set(matches.map(user => normalizePhone(user.phone)));
+    const unmatched = Array.from(new Set(normalized.filter(phone => !matchSet.has(phone))));
+
+    res.json({ matches, unmatched });
+  } catch (error) {
+    console.error('Match contacts error:', error);
+    res.status(500).json({ error: 'Failed to match contacts' });
   }
 });
 

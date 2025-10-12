@@ -1,9 +1,10 @@
 // app/_layout.tsx
 import { Stack, useRouter, useSegments } from "expo-router";
-import React, { createContext, useEffect, useMemo } from "react";
-import { ActivityIndicator, View, useColorScheme } from "react-native";
+import React, { createContext, useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { getTheme, Theme } from "../src/constants/theme";
 import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
+import { ThemeProvider, useThemeController } from "../src/contexts/ThemeContext";
 
 export const ThemeCtx = createContext<Theme>(getTheme("light"));
 
@@ -20,7 +21,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     } else if (token && inAuth) {
       router.replace("/(tabs)/ChatListScreen");
     }
-  }, [segments, token, initialized]);
+  }, [segments, token, initialized, router]);
 
   if (!initialized) {
     return (
@@ -32,23 +33,27 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function RootLayout() {
-  const scheme = useColorScheme();
-  const theme = useMemo(() => getTheme(scheme), [scheme]);
+function ThemeBridge({ children }: { children: React.ReactNode }) {
+  const { theme } = useThemeController();
+  return <ThemeCtx.Provider value={theme}>{children}</ThemeCtx.Provider>;
+}
 
+export default function RootLayout() {
   return (
-    <AuthProvider>
-      <ThemeCtx.Provider value={theme}>
-        <AuthGate>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="contacts/index" options={{ headerShown: true, headerTitle: "Contacts" }} />
-            <Stack.Screen name="about" />
-            <Stack.Screen name="auth/LoginScreen" />
-            <Stack.Screen name="auth/RegisterScreen" />
-          </Stack>
-        </AuthGate>
-      </ThemeCtx.Provider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ThemeBridge>
+          <AuthGate>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="contacts/index" options={{ headerShown: true, headerTitle: "Contacts" }} />
+              <Stack.Screen name="about" />
+              <Stack.Screen name="auth/LoginScreen" />
+              <Stack.Screen name="auth/RegisterScreen" />
+            </Stack>
+          </AuthGate>
+        </ThemeBridge>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

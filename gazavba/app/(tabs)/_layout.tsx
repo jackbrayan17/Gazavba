@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React, { useContext } from "react";
-import { getUnreadChatsCount, getUnseenStatusCount } from "../../src/data/mockData";
 import { ThemeCtx } from "../_layout";
 import AppHeader from "../components/AppHeader";
 
@@ -27,9 +26,7 @@ export default function TabsLayout() {
         options={{
           title: "Chats",
           tabBarIcon: ({ color, size }) => (
-            <BadgeIcon count={getUnreadChatsCount()}>
-              <Ionicons name="chatbubbles" color={color} size={size} />
-            </BadgeIcon>
+            <Ionicons name="chatbubbles" color={color} size={size} />
           )
         }}
       />
@@ -38,9 +35,7 @@ export default function TabsLayout() {
         options={{
           title: "Status",
           tabBarIcon: ({ color, size }) => (
-            <BadgeIcon count={getUnseenStatusCount()}>
-              <Ionicons name="aperture" color={color} size={size} />
-            </BadgeIcon>
+            <Ionicons name="aperture" color={color} size={size} />
           )
         }}
       />{/* Masquer ces routes des onglets */}
@@ -54,18 +49,5 @@ export default function TabsLayout() {
       />
     </Tabs>
     
-  );
-}
-
-function BadgeIcon({ count, children }: { count: number; children: React.ReactNode }) {
-  return (
-    <>
-      <>{children}</>
-      {count > 0 && (
-        <>
-          {/* small red dot/badge overlay is handled by tab bar; here we simply stack markup */}
-        </>
-      )}
-    </>
   );
 }

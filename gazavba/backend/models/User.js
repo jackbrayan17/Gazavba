@@ -110,7 +110,7 @@ class User {
          FROM users ORDER BY name`,
         (err, rows) => {
           if (err) reject(err);
-          else resolve(rows);
+          else resolve(rows.map(sanitizeUser));
         }
       );
     });
@@ -124,7 +124,35 @@ class User {
         [`%${query}%`, `%${query}%`, `%${query}%`],
         (err, rows) => {
           if (err) reject(err);
-          else resolve(rows);
+          else resolve(rows.map(sanitizeUser));
+        }
+      );
+    });
+  }
+
+  static async getByPhones(phones = []) {
+    const normalized = Array.from(
+      new Set(
+        (phones || [])
+          .map((value) => (value ?? '').toString().replace(/[^\d+]/g, '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (normalized.length === 0) {
+      return [];
+    }
+
+    const placeholders = normalized.map(() => '?').join(', ');
+
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, name, email, phone, avatar, role, isSuperAdmin, isOnline, lastSeen, createdAt, updatedAt
+         FROM users WHERE phone IN (${placeholders})`,
+        normalized,
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows.map(sanitizeUser));
         }
       );
     });

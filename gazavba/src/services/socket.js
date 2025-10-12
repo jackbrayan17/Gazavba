@@ -104,6 +104,10 @@ class SocketService {
     this.socket?.on(event, callback);
   }
 
+  off(event, callback) {
+    this.socket?.off(event, callback);
+  }
+
   emit(event, data) {
     this.socket?.emit(event, data);
   }

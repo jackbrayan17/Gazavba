@@ -1,6 +1,6 @@
 import React, { useContext } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { View, Text, Image } from "react-native";
+import { Text, Image } from "react-native";
 import { ThemeCtx } from "./_layout";
 
 export default function AboutScreen() {

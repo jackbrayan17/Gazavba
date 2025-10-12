@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const Status = require('../models/Status');
 const { JWT_SECRET } = require('../config/auth');
 const router = express.Router();
@@ -20,10 +21,23 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+const resolveUploadDir = (value) => {
+  if (!value) {
+    return path.resolve(process.cwd(), 'uploads');
+  }
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
+};
+
+const uploadDir = resolveUploadDir(process.env.UPLOAD_PATH);
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 // Configure multer for status media uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, process.env.UPLOAD_PATH || './uploads');
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -89,30 +103,30 @@ router.post('/text', authenticateToken, async (req, res) => {
   }
 });
 
-// Create media status
-router.post('/media', authenticateToken, upload.single('media'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No media file uploaded' });
+  // Create media status
+  router.post('/media', authenticateToken, upload.single('media'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No media file uploaded' });
+      }
+
+      const mediaUrl = `/uploads/${req.file.filename}`;
+      const type = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+
+      const status = await Status.create({
+        userId: req.userId,
+        type,
+        content: req.body.content || '',
+        mediaUrl,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      });
+
+      res.status(201).json(status);
+    } catch (error) {
+      console.error('Create media status error:', error);
+      res.status(500).json({ error: 'Failed to create status' });
     }
-
-    const mediaUrl = `/uploads/${req.file.filename}`;
-    const type = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
-    
-    const status = await Status.create({
-      userId: req.userId,
-      type,
-      content: req.body.content || '',
-      mediaUrl,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-    });
-
-    res.status(201).json(status);
-  } catch (error) {
-    console.error('Create media status error:', error);
-    res.status(500).json({ error: 'Failed to create status' });
-  }
-});
+  });
 
 // Mark status as viewed
 router.post('/:statusId/view', authenticateToken, async (req, res) => {
