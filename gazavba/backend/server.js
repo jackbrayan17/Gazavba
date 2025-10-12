@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const path = require('path');
 const { initDatabase } = require('./config/database');
 require('dotenv').config();
 
@@ -114,8 +113,8 @@ initDatabase()
   .then(() => {
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
-      console.log(`Socket.IO server ready`);
-      console.log(`Accessible at: http://192.168.1.161:${PORT}`);
+      console.log('Socket.IO server ready');
+      console.log('Remember to point the Expo app to this host using EXPO_PUBLIC_API_URL and EXPO_PUBLIC_SOCKET_URL.');
     });
   })
   .catch((error) => {
