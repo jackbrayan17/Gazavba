@@ -1,5 +1,5 @@
 // src/contexts/AuthContext.js
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ApiService from '../services/api';
 import SocketService from '../services/socket';
@@ -52,7 +52,7 @@ export function AuthProvider({ children }) {
     })();
   }, []);
 
-  const commonLoginSideEffects = async (u, t) => {
+  const commonLoginSideEffects = useCallback(async (u, t) => {
     await AsyncStorage.setItem(TOKEN_KEY, t);
     setUser(u);
     setToken(t);
@@ -62,9 +62,9 @@ export function AuthProvider({ children }) {
       await ApiService.setOnlineStatus(true);
       setIsOnline(true);
     } catch {}
-  };
+  }, []);
 
-  const login = async (credentials) => {
+  const login = useCallback(async (credentials) => {
     try {
       const payload = { ...credentials };
       if (payload.phone) {
@@ -86,10 +86,10 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Login failed' };
     }
-  };
+  }, [commonLoginSideEffects]);
 
   // Handle backends that don't return token on /register → fallback to login
-  const register = async (userData) => {
+  const register = useCallback(async (userData) => {
     try {
       const payload = {
         ...userData,
@@ -127,9 +127,9 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Registration failed' };
     }
-  };
+  }, [commonLoginSideEffects]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       if (token) {
         await ApiService.logout();
@@ -142,9 +142,9 @@ export function AuthProvider({ children }) {
     setIsOnline(false);
     ApiService.setToken(null);
     SocketService.disconnect();
-  };
+  }, [token]);
 
-  const updateProfile = async (updates) => {
+  const updateProfile = useCallback(async (updates) => {
     try {
       const updated = await ApiService.updateProfile(updates);
       setUser(updated);
@@ -152,9 +152,9 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Update failed' };
     }
-  };
+  }, []);
 
-  const uploadAvatar = async (uri) => {
+  const uploadAvatar = useCallback(async (uri) => {
     try {
       const res = await ApiService.uploadAvatar(uri);
       setUser((prev) => ({ ...prev, avatar: res.avatar }));
@@ -162,9 +162,9 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Upload failed' };
     }
-  };
+  }, []);
 
-  const setOnlineStatus = async (status) => {
+  const setOnlineStatus = useCallback(async (status) => {
     try {
       await ApiService.setOnlineStatus(status);
       setIsOnline(status);
@@ -172,7 +172,7 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Status update failed' };
     }
-  };
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -187,7 +187,7 @@ export function AuthProvider({ children }) {
       uploadAvatar,
       setOnlineStatus,
     }),
-    [user, token, initialized, isOnline]
+    [user, token, initialized, isOnline, login, register, logout, updateProfile, uploadAvatar, setOnlineStatus]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -198,18 +198,27 @@ class ApiService {
     return this.request("/users/profile", { method: "PUT", body: updates, auth: true });
   }
 
-  async uploadAvatar(imageUri) {
+  async uploadAvatar(image) {
+    const payload = typeof image === 'string' ? { uri: image } : image;
     const formData = new FormData();
     formData.append("avatar", {
-      uri: imageUri,
-      type: "image/jpeg",
-      name: "avatar.jpg",
+      uri: payload?.uri,
+      type: payload?.mimeType || "image/jpeg",
+      name: payload?.name || "avatar.jpg",
     });
     return this.request("/users/avatar", { method: "POST", body: formData, isFormData: true, auth: true });
   }
 
   async setOnlineStatus(isOnline) {
     return this.request("/users/online", { method: "POST", body: { isOnline }, auth: true });
+  }
+
+  async matchContacts(phoneNumbers = []) {
+    return this.request("/users/match-contacts", {
+      method: "POST",
+      body: { contacts: phoneNumbers },
+      auth: true,
+    });
   }
 
   // ---------- Chats ----------
@@ -260,15 +269,15 @@ class ApiService {
   }
 
   async createTextStatus(content) {
-    return this.request("/statuses/text", { method: "POST", body: { content }, auth: true });
+    return this.request("/statuses/text", { method: "POST", body: { content: content?.trim?.() ?? content }, auth: true });
   }
 
-  async createMediaStatus(imageUri, content = "") {
+  async createMediaStatus({ uri, mimeType = "image/jpeg", name = "status.jpg", content = "" }) {
     const formData = new FormData();
     formData.append("media", {
-      uri: imageUri,
-      type: "image/jpeg",
-      name: "status.jpg",
+      uri,
+      type: mimeType,
+      name,
     });
     formData.append("content", content);
     return this.request("/statuses/media", { method: "POST", body: formData, isFormData: true, auth: true });

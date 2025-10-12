@@ -23,7 +23,31 @@ const authenticateToken = (req, res, next) => {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const chats = await Chat.getByUserId(req.userId);
-    res.json(chats);
+    const enriched = await Promise.all(
+      chats.map(async (chat) => {
+        const participants = await Chat.getParticipants(chat.id);
+        const others = participants.filter((participant) => participant.userId !== req.userId && participant.id !== req.userId);
+        const primary = chat.type === 'direct' ? others[0] : null;
+
+        const displayName =
+          chat.type === 'group'
+            ? chat.name || `Group • ${participants.length} members`
+            : primary?.name || chat.name || 'Conversation';
+
+        const avatar = chat.type === 'group' ? chat.avatar || null : primary?.avatar || null;
+
+        return {
+          ...chat,
+          unreadCount: Number(chat.unreadCount || 0),
+          participants,
+          displayName,
+          avatar,
+          otherParticipant: primary || null,
+        };
+      })
+    );
+
+    res.json(enriched);
   } catch (error) {
     console.error('Get chats error:', error);
     res.status(500).json({ error: 'Failed to fetch chats' });
@@ -70,7 +94,23 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 
     const participants = await Chat.getParticipants(req.params.id);
-    res.json({ ...chat, participants });
+    const others = participants.filter((participant) => participant.userId !== req.userId && participant.id !== req.userId);
+    const primary = chat.type === 'direct' ? others[0] : null;
+
+    const displayName =
+      chat.type === 'group'
+        ? chat.name || `Group • ${participants.length} members`
+        : primary?.name || chat.name || 'Conversation';
+
+    const avatar = chat.type === 'group' ? chat.avatar || null : primary?.avatar || null;
+
+    res.json({
+      ...chat,
+      participants,
+      displayName,
+      avatar,
+      otherParticipant: primary || null,
+    });
   } catch (error) {
     console.error('Get chat error:', error);
     res.status(500).json({ error: 'Failed to fetch chat' });

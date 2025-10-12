@@ -1,109 +1,255 @@
 import { useRouter } from "expo-router";
-import React, { useContext, useEffect, useState } from "react";
-import { FlatList, Image, Text, TouchableOpacity, View, TextInput } from "react-native";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { FlatList, Image, Text, TouchableOpacity, View, TextInput, Share, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as Contacts from "expo-contacts";
+import * as Clipboard from "expo-clipboard";
 import { useAuth } from "../../src/contexts/AuthContext";
 import ApiService from "../../src/services/api";
 import { ThemeCtx } from "../_layout";
+import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
+
+const INVITE_LINK = "https://gazavba.app/download";
+
+const normalizePhone = (value: string | undefined | null) => (value ?? "").replace(/[^\d+]/g, "").trim();
+
+type DeviceContact = {
+  name: string;
+  phone: string;
+};
+
+type MatchedContact = {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  phone: string;
+  isOnline?: boolean;
+  contactName?: string;
+};
 
 export default function ContactsScreen() {
-  const t = useContext(ThemeCtx);
+  const theme = useContext(ThemeCtx);
   const router = useRouter();
   const { user } = useAuth();
-  const [contacts, setContacts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [matchedContacts, setMatchedContacts] = useState<MatchedContact[]>([]);
+  const [inviteContacts, setInviteContacts] = useState<DeviceContact[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
-  useEffect(() => {
-    loadContacts();
-  }, []);
-
-  const loadContacts = async () => {
+  const loadContacts = useCallback(async () => {
     try {
       setLoading(true);
-      const users = await ApiService.getUsers();
-      // Filter out current user
-      const filteredUsers = users.filter(u => u.id !== user?.id);
-      setContacts(filteredUsers);
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== "granted") {
+        setPermissionDenied(true);
+        return;
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Emails],
+      });
+
+      const phoneToNames = new Map<string, string>();
+      const normalizedNumbers: string[] = [];
+
+      data.forEach((contact) => {
+        (contact.phoneNumbers || []).forEach((phone) => {
+          const normalized = normalizePhone(phone.number);
+          if (!normalized) return;
+          if (!phoneToNames.has(normalized)) {
+            phoneToNames.set(normalized, contact.name ?? normalized);
+            normalizedNumbers.push(normalized);
+          }
+        });
+      });
+
+      if (normalizedNumbers.length === 0) {
+        setMatchedContacts([]);
+        setInviteContacts([]);
+        return;
+      }
+
+      const response = await ApiService.matchContacts(normalizedNumbers);
+      const matches = Array.isArray(response?.matches) ? response.matches : [];
+      const unmatched = Array.isArray(response?.unmatched) ? response.unmatched : [];
+
+      const formattedMatches: MatchedContact[] = matches
+        .filter((item: any) => item.id !== user?.id)
+        .map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          avatar: item.avatar,
+          phone: item.phone,
+          isOnline: item.isOnline,
+          contactName: phoneToNames.get(normalizePhone(item.phone)) || item.name,
+        }));
+
+      const formattedInvites: DeviceContact[] = unmatched.map((phone: string) => ({
+        phone,
+        name: phoneToNames.get(phone) || phone,
+      }));
+
+      setMatchedContacts(formattedMatches);
+      setInviteContacts(formattedInvites);
     } catch (error) {
-      console.error('Failed to load contacts:', error);
+      console.error("Failed to load contacts", error);
+      Alert.alert("Error", "Unable to load your contacts. Please try again later.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id]);
 
-  const searchContacts = async (query) => {
-    if (!query.trim()) {
-      loadContacts();
-      return;
-    }
-    
-    try {
-      const results = await ApiService.searchUsers(query);
-      const filteredResults = results.filter(u => u.id !== user?.id);
-      setContacts(filteredResults);
-    } catch (error) {
-      console.error('Search failed:', error);
-    }
-  };
+  useEffect(() => {
+    loadContacts();
+  }, [loadContacts]);
 
-  const handleContactPress = async (contact) => {
+  const filteredMatches = useMemo(() => {
+    if (!searchQuery.trim()) return matchedContacts;
+    const term = searchQuery.trim().toLowerCase();
+    return matchedContacts.filter((item) =>
+      item.name.toLowerCase().includes(term) || item.contactName?.toLowerCase().includes(term)
+    );
+  }, [matchedContacts, searchQuery]);
+
+  const filteredInvites = useMemo(() => {
+    if (!searchQuery.trim()) return inviteContacts;
+    const term = searchQuery.trim().toLowerCase();
+    return inviteContacts.filter((item) =>
+      item.name.toLowerCase().includes(term) || item.phone.toLowerCase().includes(term)
+    );
+  }, [inviteContacts, searchQuery]);
+
+  const handleContactPress = async (contact: MatchedContact) => {
     try {
-      // Create or get direct chat with this contact
       const chat = await ApiService.createChat({
-        type: 'direct',
-        participants: [contact.id]
+        type: "direct",
+        participants: [contact.id],
       });
-      
-      router.push({ 
-        pathname: "/chat/[id]", 
-        params: { 
-          id: chat.id, 
-          name: contact.name, 
-          avatar: contact.avatar 
-        }
+
+      router.push({
+        pathname: "/chat/[id]",
+        params: {
+          id: chat.id,
+        },
       });
     } catch (error) {
-      console.error('Failed to create chat:', error);
+      console.error("Failed to create chat", error);
+      Alert.alert("Error", "We couldn't open a conversation with this contact.");
     }
   };
+
+  const handleInvite = async (contact: DeviceContact) => {
+    const message = `Join me on Gazavba! ${INVITE_LINK}`;
+    try {
+      await Share.share({
+        message,
+        title: "Gazavba Invite",
+      });
+    } catch (error) {
+      console.error("Share failed", error);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await Clipboard.setStringAsync(INVITE_LINK);
+      Alert.alert("Copied", "Invite link copied to clipboard.");
+    } catch (error) {
+      console.error("Clipboard error", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={theme.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  if (permissionDenied) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Ionicons name="alert-circle" size={36} color={theme.subtext} />
+        <Text style={{ marginTop: 12, fontWeight: "700", color: theme.text, fontSize: 16 }}>Allow contact access</Text>
+        <Text style={{ marginTop: 8, color: theme.subtext, textAlign: "center" }}>
+          Enable contact permissions in your device settings so Gazavba can connect you with friends already using the app.
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ padding: 16 }}>
-        <Text style={{ fontSize: 22, fontWeight: "800", color: t.primary, marginBottom: 12 }}>Contacts</Text>
-        
-        {/* Search */}
-        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: t.card, borderRadius: 14, borderWidth: 1, borderColor: t.hairline, paddingHorizontal: 12, height: 44, marginBottom: 16 }}>
-          <Ionicons name="search" size={18} color={t.subtext} />
+        <Text style={{ fontSize: 22, fontWeight: "800", color: theme.primary, marginBottom: 12 }}>Contacts</Text>
+
+        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.hairline, paddingHorizontal: 12, height: 44, marginBottom: 20 }}>
+          <Ionicons name="search" size={18} color={theme.subtext} />
           <TextInput
             value={searchQuery}
-            onChangeText={(text) => {
-              setSearchQuery(text);
-              searchContacts(text);
-            }}
+            onChangeText={setSearchQuery}
             placeholder="Search contacts"
-            placeholderTextColor={t.subtext}
-            style={{ flex: 1, color: t.text, fontSize: 16, marginLeft: 8 }}
+            placeholderTextColor={theme.subtext}
+            style={{ flex: 1, color: theme.text, fontSize: 16, marginLeft: 8 }}
           />
         </View>
 
+        <Text style={{ color: theme.subtext, fontSize: 13, marginBottom: 8, fontWeight: "700" }}>On Gazavba</Text>
         <FlatList
-          data={contacts}
+          data={filteredMatches}
           keyExtractor={(i) => i.id}
           renderItem={({ item }) => (
             <TouchableOpacity
               onPress={() => handleContactPress(item)}
-              style={{ flexDirection: "row", alignItems: "center", backgroundColor: t.card, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: t.hairline, marginBottom: 12 }}
+              style={{ flexDirection: "row", alignItems: "center", backgroundColor: theme.card, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: theme.hairline, marginBottom: 12 }}
             >
-              <Image source={{ uri: item.avatar }} style={{ width: 56, height: 56, borderRadius: 28, marginRight: 12 }} />
-              <View>
-                <Text style={{ fontWeight: "700", fontSize: 16, color: t.text }}>{item.name}</Text>
-                <Text style={{ color: t.subtext, marginTop: 2 }}>{item.isOnline ? "Online" : "Offline"}</Text>
+              <Image
+                source={{ uri: resolveAssetUri(item.avatar) || "https://ui-avatars.com/api/?background=0C3B2E&color=fff&name=G" }}
+                style={{ width: 56, height: 56, borderRadius: 28, marginRight: 12 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "700", fontSize: 16, color: theme.text }}>{item.contactName || item.name}</Text>
+                <Text style={{ color: theme.subtext, marginTop: 2 }}>{item.isOnline ? "Online" : "Offline"}</Text>
               </View>
+              <Ionicons name="chatbubble-ellipses" size={20} color={theme.accent} />
             </TouchableOpacity>
           )}
+          ListEmptyComponent={
+            <View style={{ alignItems: "center", paddingVertical: 20 }}>
+              <Text style={{ color: theme.subtext }}>None of your contacts are on Gazavba yet.</Text>
+            </View>
+          }
+        />
+
+        <Text style={{ color: theme.subtext, fontSize: 13, marginBottom: 8, fontWeight: "700", marginTop: 16 }}>Invite to Gazavba</Text>
+        <FlatList
+          data={filteredInvites}
+          keyExtractor={(i) => `${i.phone}`}
+          renderItem={({ item }) => (
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: theme.card, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: theme.hairline, marginBottom: 12 }}>
+              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.hairline, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                <Ionicons name="person-add" size={20} color={theme.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "700", fontSize: 16, color: theme.text }}>{item.name}</Text>
+                <Text style={{ color: theme.subtext, marginTop: 2 }}>{item.phone}</Text>
+              </View>
+              <TouchableOpacity onPress={() => handleInvite(item)} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: theme.mint, borderRadius: 10, marginRight: 8 }}>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Invite</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleCopyLink} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: theme.hairline }}>
+                <Text style={{ color: theme.text, fontWeight: "600" }}>Copy</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: "center", paddingVertical: 20 }}>
+              <Text style={{ color: theme.subtext }}>Everyone from your contacts is already here!</Text>
+            </View>
+          }
         />
       </View>
     </SafeAreaView>

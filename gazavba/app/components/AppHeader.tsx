@@ -1,10 +1,8 @@
-import React, { useContext } from "react";
+import React from "react";
 import { View, Text, Image } from "react-native";
-import { ThemeCtx } from "../_layout";
 
 type Props = { title?: string };
 export default function AppHeader({ title = "Gazavba" }: Props) {
-  const t = useContext(ThemeCtx);
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Image
