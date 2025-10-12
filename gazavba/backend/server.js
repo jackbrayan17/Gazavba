@@ -3,8 +3,6 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const { resolve: resolvePath, isAbsolute } = require('node:path');
-const fs = require('fs');
 const { initDatabase } = require('./config/database');
 require('dotenv').config();
 
@@ -20,9 +18,9 @@ const io = socketIo(server, {
 const PORT = process.env.PORT || 3000;
 const resolveUploadDir = (value) => {
   if (!value) {
-    return resolvePath(process.cwd(), 'uploads');
+    return path.resolve(process.cwd(), 'uploads');
   }
-  return isAbsolute(value) ? value : resolvePath(process.cwd(), value);
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
 };
 
 const uploadDir = resolveUploadDir(process.env.UPLOAD_PATH);
