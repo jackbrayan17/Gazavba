@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, FlatList, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../src/contexts/AuthContext";
 import ApiService from "../../src/services/api";
 import SocketService from "../../src/services/socket";
 import { ThemeCtx } from "../_layout";
+import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
 
 type Msg = { id: string; me: boolean; text: string };
 
@@ -18,10 +19,22 @@ export default function ChatDetailScreen() {
   const [msg, setMsg] = useState("");
   const [data, setData] = useState<Msg[]>([]);
   const [chat, setChat] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const menuScale = useRef(new Animated.Value(0)).current;
   const [open, setOpen] = useState(false);
   const enter = useRef(new Animated.Value(0)).current;
+
+  const handleSocketMessage = useCallback((messageData: any) => {
+    if (messageData.chatId === id) {
+      const newMessage = {
+        id: messageData.message.id,
+        me: messageData.message.senderId === user?.id,
+        text: messageData.message.text,
+        senderName: messageData.message.senderName,
+        senderAvatar: messageData.message.senderAvatar
+      };
+      setData(prev => [...prev, newMessage]);
+    }
+  }, [id, user?.id]);
 
   useEffect(() => {
     Animated.timing(enter, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
@@ -29,20 +42,19 @@ export default function ChatDetailScreen() {
       loadChatData();
       setupSocketListeners();
     }
-    
-    return () => {
-      SocketService.removeAllListeners();
-    };
-  }, [id]);
 
-  const loadChatData = async () => {
+    return () => {
+      SocketService.off("new_message", handleSocketMessage);
+    };
+  }, [id, enter, handleSocketMessage, loadChatData, setupSocketListeners]);
+
+  const loadChatData = useCallback(async () => {
     try {
-      setLoading(true);
       const [chatData, messages] = await Promise.all([
         ApiService.getChat(id!),
         ApiService.getMessages(id!)
       ]);
-      
+
       setChat(chatData);
       const formattedMessages = messages.map(m => ({
         id: m.id,
@@ -57,25 +69,12 @@ export default function ChatDetailScreen() {
       await ApiService.markChatAsRead(id!);
     } catch (error) {
       console.error('Failed to load chat data:', error);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [id, user?.id]);
 
-  const setupSocketListeners = () => {
-    SocketService.onNewMessage((messageData) => {
-      if (messageData.chatId === id) {
-        const newMessage = {
-          id: messageData.message.id,
-          me: messageData.message.senderId === user?.id,
-          text: messageData.message.text,
-          senderName: messageData.message.senderName,
-          senderAvatar: messageData.message.senderAvatar
-        };
-        setData(prev => [...prev, newMessage]);
-      }
-    });
-  };
+  const setupSocketListeners = useCallback(() => {
+    SocketService.on("new_message", handleSocketMessage);
+  }, [handleSocketMessage]);
 
   const toggleMenu = () => {
     setOpen((v) => {
@@ -121,6 +120,15 @@ export default function ChatDetailScreen() {
     }
   };
 
+  const displayUser = useMemo(() => {
+    if (!chat?.participants || !user?.id) return chat?.otherParticipant ?? null;
+    const others = (chat.participants || []).filter((p: any) => p.id !== user.id && p.userId !== user.id);
+    return chat?.otherParticipant || others[0] || null;
+  }, [chat, user?.id]);
+
+  const displayName = chat?.displayName || displayUser?.name || chat?.name || "Conversation";
+  const avatarUri = resolveAssetUri(chat?.avatar || displayUser?.avatar);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
       <Animated.View style={{ transform: [{ translateY: enter.interpolate({ inputRange: [0,1], outputRange: [6,0] }) }], opacity: enter }}>
@@ -130,20 +138,24 @@ export default function ChatDetailScreen() {
             <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 8, padding: 6 }}>
               <Ionicons name="chevron-back" color="#fff" size={22} />
             </TouchableOpacity>
-            {chat && (
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <View>
-                  <Image source={{ uri: chat.user.avatar }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} />
-                  {chat.user.isOnline && (
-                    <View style={{ position: "absolute", right: -2, bottom: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: "#2ECC71", borderWidth: 2, borderColor: t.primary }} />
-                  )}
-                </View>
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>{chat.user.name}</Text>
-                  <Text style={{ color: "#E6FCF5", fontSize: 12 }}>{chat.user.isOnline ? "Online" : "Last seen recently"}</Text>
-                </View>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View>
+                <Image source={{ uri: avatarUri || "https://ui-avatars.com/api/?name=G&background=0C3B2E&color=fff" }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} />
+                {displayUser?.isOnline && (
+                  <View style={{ position: "absolute", right: -2, bottom: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: "#2ECC71", borderWidth: 2, borderColor: t.primary }} />
+                )}
               </View>
-            )}
+              <View style={{ marginLeft: 10 }}>
+                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>{displayName}</Text>
+                <Text style={{ color: "#E6FCF5", fontSize: 12 }}>
+                  {displayUser?.isOnline
+                    ? "Online"
+                    : displayUser?.lastSeen
+                      ? `Last seen ${new Date(displayUser.lastSeen).toLocaleString()}`
+                      : "Last seen recently"}
+                </Text>
+              </View>
+            </View>
           </View>
           <TouchableOpacity onPress={toggleMenu}>
             <Ionicons name="ellipsis-vertical" size={22} color="#fff" />

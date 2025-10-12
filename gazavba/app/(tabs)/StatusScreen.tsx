@@ -4,201 +4,368 @@ import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
 import { ResizeMode, Video } from "expo-video";
 import React, { useContext, useMemo, useRef, useState } from "react";
-import { Animated, Dimensions, Easing, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
+  Image,
+  Modal,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  RefreshControl,
+  Alert,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ApiService from "../../src/services/api";
+import { useAuth } from "../../src/contexts/AuthContext";
 import { ThemeCtx } from "../_layout";
+import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
 
-type StatusItem = {
+const WINDOW_WIDTH = Dimensions.get("window").width;
+
+export type StatusItem = {
   id: string;
-  owner: string;          // "me" or contact name
-  mediaUri: string;
-  mediaType: "image" | "video";
-  time: string;
-  viewed: boolean;
-  avatar: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string | null;
+  type: "text" | "image" | "video";
+  content?: string | null;
+  mediaUrl?: string | null;
+  createdAt?: string | null;
+  hasViewed?: number | boolean;
 };
 
-const W = Dimensions.get("window").width;
+const INVITE_TEXT = "I just posted a new story on Gazavba";
 
 export default function StatusScreen() {
-  const t = useContext(ThemeCtx);
-  const [items, setItems] = useState<StatusItem[]>([
-    { id: "s1", owner: "Brenda", mediaUri: "https://picsum.photos/800/1300?1", mediaType: "image", time: "Today 08:45", viewed: false, avatar: "https://i.pravatar.cc/120?img=3" },
-    { id: "s2", owner: "Marcus", mediaUri: "https://picsum.photos/800/1300?2", mediaType: "image", time: "Yesterday 22:00", viewed: true, avatar: "https://i.pravatar.cc/120?img=5" }
-  ]);
+  const theme = useContext(ThemeCtx);
+  const { user } = useAuth();
+  const [statuses, setStatuses] = useState<StatusItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [viewer, setViewer] = useState<StatusItem | null>(null);
-  const fade = useRef(new Animated.Value(0)).current;
-  const [query, setQuery] = useState("");
+  const [textComposerVisible, setTextComposerVisible] = useState(false);
+  const [textContent, setTextContent] = useState("");
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const myLatest = useMemo(() => items.find(i => i.owner === "me"), [items]);
-
-  const owners = useMemo(() => {
-    const set = new Set<string>();
-    items.forEach(i => { if (i.owner !== "me") set.add(i.owner); });
-    return Array.from(set);
-  }, [items]);
-
-  const othersLatest = useMemo(() => {
-    return owners
-      .filter(o => o.toLowerCase().includes(query.trim().toLowerCase()))
-      .map(owner => {
-        const byOwner = items.filter(i => i.owner === owner);
-        const latest = byOwner[0]; // newest first
-        const viewed = byOwner.every(i => i.viewed);
-        return { latest, viewed } as { latest: StatusItem; viewed: boolean };
-      });
-  }, [owners, items, query]);
-
-  const pick = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: true,
-      aspect: [9, 16],
-      quality: 0.7
-    });
-    if (!res.canceled) {
-      const asset = res.assets[0];
-      const mediaType = (asset.type === "video" ? "video" : "image") as "video" | "image";
-      const mine: StatusItem = {
-        id: "me-" + Date.now(),
-        owner: "me",
-        mediaUri: asset.uri,
-        mediaType,
-        time: "Just now",
-        viewed: false,
-        avatar: "https://i.pravatar.cc/120?img=1"
-      };
-      setItems((arr) => [mine, ...arr.filter(a => a.owner !== "me")]);
+  const loadStatuses = async () => {
+    try {
+      setLoading(true);
+      const data = await ApiService.getStatuses();
+      setStatuses(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load statuses", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const open = (s: StatusItem) => {
-    setViewer(s);
-    Animated.timing(fade, { toValue: 1, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
-    // Marque comme vu
-    setItems(prev => prev.map(it => it.id === s.id ? { ...it, viewed: true } : it));
+  React.useEffect(() => {
+    loadStatuses();
+  }, []);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await loadStatuses();
+    setRefreshing(false);
+  }, []);
+
+  const myStatuses = useMemo(() => statuses.filter((item) => item.userId === user?.id), [statuses, user?.id]);
+  const otherStatuses = useMemo(() => statuses.filter((item) => item.userId !== user?.id), [statuses, user?.id]);
+
+  const groupedByUser = useMemo(() => {
+    const byUser = new Map<string, StatusItem[]>();
+    otherStatuses.forEach((status) => {
+      const key = status.userId;
+      if (!byUser.has(key)) {
+        byUser.set(key, []);
+      }
+      byUser.get(key)?.push(status);
+    });
+    return Array.from(byUser.entries()).map(([key, list]) => {
+      const sorted = [...list].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      return {
+        userId: key,
+        latest: sorted[0],
+        all: sorted,
+        allViewed: sorted.every((item) => !!item.hasViewed),
+      };
+    });
+  }, [otherStatuses]);
+
+  const openStatus = async (status: StatusItem) => {
+    setViewer(status);
+    Animated.timing(fadeAnim, { toValue: 1, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    if (!status.hasViewed) {
+      try {
+        await ApiService.markStatusAsViewed(status.id);
+        setStatuses((prev) =>
+          prev.map((item) =>
+            item.id === status.id
+              ? { ...item, hasViewed: true }
+              : item
+          )
+        );
+      } catch (error) {
+        console.error("Failed to mark status viewed", error);
+      }
+    }
   };
 
-  const close = () => {
-    Animated.timing(fade, { toValue: 0, duration: 120, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => setViewer(null));
+  const closeViewer = () => {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 140, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() =>
+      setViewer(null)
+    );
   };
 
-  const Ring = ({ viewed }: { viewed: boolean }) => (
-    <View style={{
-      borderWidth: 2,
-      borderColor: viewed ? "#9AA4AE" : t.tabActive,
-      padding: 2,
-      borderRadius: 999
-    }}>
-      {/* children injected by parent: avatar */}
-    </View>
-  );
+  const ensurePermissions = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "We need access to your media library to share photos or videos.");
+      return false;
+    }
+    return true;
+  };
+
+  const handleAddMediaStatus = async () => {
+    const allowed = await ensurePermissions();
+    if (!allowed) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets || !result.assets[0]) {
+      return;
+    }
+
+    const asset = result.assets[0];
+
+    try {
+      await ApiService.createMediaStatus({
+        uri: asset.uri,
+        mimeType: asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg"),
+        name: asset.fileName || `status-${Date.now()}.${asset.type === "video" ? "mp4" : "jpg"}`,
+      });
+      await loadStatuses();
+    } catch (error) {
+      console.error("Failed to upload status", error);
+      Alert.alert("Upload failed", "Could not publish your status. Please try again.");
+    }
+  };
+
+  const handleSubmitTextStatus = async () => {
+    const text = textContent.trim();
+    if (!text) {
+      Alert.alert("Add some text", "Your status message cannot be empty.");
+      return;
+    }
+    try {
+      await ApiService.createTextStatus(text);
+      setTextContent("");
+      setTextComposerVisible(false);
+      await loadStatuses();
+    } catch (error) {
+      console.error("Failed to create text status", error);
+      Alert.alert("Error", "Could not publish your text status. Try again later.");
+    }
+  };
+
+  const handleDownload = async (status: StatusItem | null) => {
+    if (!status?.mediaUrl) return;
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (permission.status !== "granted") return;
+      const source = resolveAssetUri(status.mediaUrl);
+      if (!source) return;
+      const extension = status.type === "video" ? "mp4" : "jpg";
+      const localUri = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}status-${status.id}.${extension}`;
+      const download = await FileSystem.downloadAsync(source, localUri);
+      await MediaLibrary.saveToLibraryAsync(download.uri);
+      Alert.alert("Saved", "Status saved to your gallery.");
+    } catch (error) {
+      console.error("Failed to save status", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={theme.primary} />
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <Text style={{ fontSize: 22, fontWeight: "800", color: t.primary, marginBottom: 12 }}>Status</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}>
+        <Text style={{ fontSize: 22, fontWeight: "800", color: theme.primary, marginBottom: 12 }}>Status</Text>
 
-        {/* Search */}
-        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: t.card, borderRadius: 14, borderWidth: 1, borderColor: t.hairline, paddingHorizontal: 12, height: 44, marginBottom: 14 }}>
-          <Ionicons name="search" size={18} color={t.subtext} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search contacts"
-            placeholderTextColor={t.subtext}
-            style={{ flex: 1, color: t.text, fontSize: 16, marginLeft: 8 }}
-          />
-        </View>
-
-        {/* Mon statut */}
-        <View style={{ backgroundColor: t.card, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: t.hairline, marginBottom: 16, flexDirection: "row", alignItems: "center" }}>
-          <TouchableOpacity onPress={pick}>
-            <Ring viewed={!!myLatest}>
-              {myLatest ? (
-                <Image source={{ uri: myLatest.mediaUri }} style={{ width: 60, height: 60, borderRadius: 30 }} />
-              ) : (
-                <Image source={{ uri: "https://i.pravatar.cc/120?img=1" }} style={{ width: 60, height: 60, borderRadius: 30 }} />
-              )}
-            </Ring>
-          </TouchableOpacity>
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={{ fontWeight: "700", fontSize: 16, color: t.text }}>My Status</Text>
-            <Text style={{ color: t.subtext, marginTop: 2 }}>{myLatest ? myLatest.time : "Tap to add photo or video"}</Text>
-          </View>
-          <TouchableOpacity onPress={pick} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: t.mint, borderRadius: 10 }}>
-            <Text style={{ color: "#fff", fontWeight: "700" }}>Add</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Statuts des contacts */}
-        {othersLatest.map(({ latest, viewed }) => (
-          <TouchableOpacity key={latest.id} onPress={() => open(latest)} activeOpacity={0.85}
-            style={{ flexDirection: "row", alignItems: "center", backgroundColor: t.card, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: t.hairline, marginBottom: 12 }}>
-            <Ring viewed={viewed}>
-              <Image source={{ uri: latest.mediaUri }} style={{ width: 60, height: 60, borderRadius: 30 }} />
-            </Ring>
+        <View
+          style={{
+            backgroundColor: theme.card,
+            borderRadius: 16,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: theme.hairline,
+            marginBottom: 16,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <TouchableOpacity onPress={handleAddMediaStatus}>
+              <View
+                style={{
+                  borderWidth: 2,
+                  borderColor: theme.mint,
+                  borderRadius: 40,
+                  padding: 2,
+                }}
+              >
+                <Image
+                  source={{ uri: resolveAssetUri(myStatuses[0]?.mediaUrl || myStatuses[0]?.userAvatar) || resolveAssetUri(user?.avatar) || "https://ui-avatars.com/api/?name=Me&background=0C3B2E&color=fff" }}
+                  style={{ width: 64, height: 64, borderRadius: 32 }}
+                />
+              </View>
+            </TouchableOpacity>
             <View style={{ marginLeft: 12, flex: 1 }}>
-              <Text style={{ fontWeight: "700", fontSize: 16, color: t.text }}>{latest.owner}</Text>
-              <Text style={{ color: t.subtext, marginTop: 2 }}>{latest.time}</Text>
+              <Text style={{ fontWeight: "700", fontSize: 16, color: theme.text }}>My Status</Text>
+              <Text style={{ color: theme.subtext, marginTop: 2 }}>
+                {myStatuses[0]?.createdAt
+                  ? `Last updated ${new Date(myStatuses[0].createdAt).toLocaleString()}`
+                  : "Share a photo, video, or thought"}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", marginTop: 16, gap: 12 }}>
+            <TouchableOpacity
+              onPress={handleAddMediaStatus}
+              style={{ flex: 1, backgroundColor: theme.mint, paddingVertical: 10, borderRadius: 12, alignItems: "center" }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700" }}>Add Photo/Video</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setTextComposerVisible(true)}
+              style={{ flex: 1, backgroundColor: theme.accent, paddingVertical: 10, borderRadius: 12, alignItems: "center" }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700" }}>Add Text</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {groupedByUser.map(({ userId, latest, allViewed }) => (
+          <TouchableOpacity
+            key={userId}
+            onPress={() => openStatus(latest)}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: theme.card,
+              borderRadius: 16,
+              padding: 12,
+              borderWidth: 1,
+              borderColor: theme.hairline,
+              marginBottom: 12,
+            }}
+          >
+            <View
+              style={{
+                borderWidth: 2,
+                borderColor: allViewed ? theme.hairline : theme.mint,
+                padding: 2,
+                borderRadius: 40,
+              }}
+            >
+              <Image
+                source={{ uri: resolveAssetUri(latest.userAvatar) || "https://ui-avatars.com/api/?background=0C3B2E&color=fff&name=G" }}
+                style={{ width: 60, height: 60, borderRadius: 30 }}
+              />
+            </View>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontWeight: "700", fontSize: 16, color: theme.text }}>{latest.userName}</Text>
+              <Text style={{ color: theme.subtext, marginTop: 2 }}>
+                {latest.createdAt ? new Date(latest.createdAt).toLocaleString() : INVITE_TEXT}
+              </Text>
             </View>
           </TouchableOpacity>
         ))}
+
+        {groupedByUser.length === 0 && (
+          <View style={{ alignItems: "center", paddingVertical: 24 }}>
+            <Ionicons name="sparkles" size={36} color={theme.subtext} />
+            <Text style={{ color: theme.text, fontWeight: "700", marginTop: 12 }}>No friend updates yet</Text>
+            <Text style={{ color: theme.subtext, marginTop: 4, textAlign: "center" }}>
+              Share your invite link so friends can join and share their stories.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
-      {/* Viewer */}
-      <Modal visible={!!viewer} transparent animationType="none" onRequestClose={close}>
-        <Animated.View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.92)", opacity: fade }}>
-          {/* Top bar */}
-          <View style={{ position: "absolute", top: 40, left: 16, right: 16, zIndex: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <TouchableOpacity onPress={close} style={{ padding: 8 }}>
+      <Modal visible={!!viewer} transparent animationType="none" onRequestClose={closeViewer}>
+        <Animated.View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.92)", opacity: fadeAnim }}>
+          <View style={{ position: "absolute", top: 48, left: 16, right: 16, zIndex: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <TouchableOpacity onPress={closeViewer} style={{ padding: 8 }}>
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={async () => {
-                if (!viewer) return;
-                try {
-                  const perm = await MediaLibrary.requestPermissionsAsync();
-                  if (perm.status !== "granted") return;
-                  const fileUri = FileSystem.cacheDirectory + viewer.id + (viewer.mediaType === "video" ? ".mp4" : ".jpg");
-                  const dl = await FileSystem.downloadAsync(viewer.mediaUri, fileUri);
-                  await MediaLibrary.saveToLibraryAsync(dl.uri);
-                } catch {}
-              }}
-              style={{ padding: 8 }}
-            >
-              <Ionicons name="download" size={22} color="#fff" />
-            </TouchableOpacity>
+            {viewer?.mediaUrl && (
+              <TouchableOpacity onPress={() => handleDownload(viewer)} style={{ padding: 8 }}>
+                <Ionicons name="download" size={22} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
 
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={close}>
-            {viewer && viewer.mediaType === "image" && (
-              <Image source={{ uri: viewer.mediaUri }} style={{ width: W, height: "100%", resizeMode: "contain" }} />
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeViewer}>
+            {viewer && viewer.type === "image" && viewer.mediaUrl && (
+              <Image source={{ uri: resolveAssetUri(viewer.mediaUrl) }} style={{ width: WINDOW_WIDTH, height: "100%", resizeMode: "contain" }} />
             )}
-            {viewer && viewer.mediaType === "video" && (
+            {viewer && viewer.type === "video" && viewer.mediaUrl && (
               <Video
-                source={{ uri: viewer.mediaUri }}
-                style={{ width: W, height: "100%" }}
+                source={{ uri: resolveAssetUri(viewer.mediaUrl)! }}
+                style={{ width: WINDOW_WIDTH, height: "100%" }}
                 resizeMode={ResizeMode.CONTAIN}
                 shouldPlay
                 isLooping
-                useNativeControls={false}
               />
             )}
-          </TouchableOpacity>
-
-          {/* Comment box for others */}
-          {viewer && viewer.owner !== "me" && (
-            <View style={{ position: "absolute", left: 16, right: 16, bottom: 28, flexDirection: "row", alignItems: "center" }}>
-              <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 24, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)" }}>
-                <TextInput placeholder="Reply..." placeholderTextColor="#DEE2E6" style={{ color: "#fff", fontSize: 16 }} />
+            {viewer && viewer.type === "text" && (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <Text style={{ color: "#fff", fontSize: 26, textAlign: "center", fontWeight: "700" }}>{viewer.content}</Text>
               </View>
-              <TouchableOpacity style={{ marginLeft: 10, backgroundColor: "#12B886", width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="send" size={18} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      </Modal>
+
+      <Modal visible={textComposerVisible} transparent animationType="fade" onRequestClose={() => setTextComposerVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" }}>
+          <View style={{ backgroundColor: theme.card, borderRadius: 16, width: "86%", padding: 20, borderWidth: 1, borderColor: theme.hairline }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: theme.text, marginBottom: 12 }}>Share a thought</Text>
+            <TextInput
+              value={textContent}
+              onChangeText={setTextContent}
+              placeholder="What do you want to share?"
+              placeholderTextColor={theme.subtext}
+              multiline
+              style={{ minHeight: 100, borderWidth: 1, borderColor: theme.hairline, borderRadius: 12, padding: 12, fontSize: 16, color: theme.text }}
+            />
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 16 }}>
+              <TouchableOpacity onPress={() => setTextComposerVisible(false)} style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+                <Text style={{ color: theme.subtext }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSubmitTextStatus} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                <Text style={{ color: theme.mint, fontWeight: "700" }}>Publish</Text>
               </TouchableOpacity>
             </View>
-          )}
-        </Animated.View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );

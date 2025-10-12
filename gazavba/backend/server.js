@@ -1,8 +1,10 @@
+/* eslint-env node */
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const path = require('path');
+const { resolve: resolvePath, isAbsolute } = require('node:path');
+const fs = require('fs');
 const { initDatabase } = require('./config/database');
 require('dotenv').config();
 
@@ -16,11 +18,23 @@ const io = socketIo(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+const resolveUploadDir = (value) => {
+  if (!value) {
+    return resolvePath(process.cwd(), 'uploads');
+  }
+  return isAbsolute(value) ? value : resolvePath(process.cwd(), value);
+};
+
+const uploadDir = resolveUploadDir(process.env.UPLOAD_PATH);
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('uploads'));
+app.use('/uploads', express.static(uploadDir));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -45,7 +59,9 @@ io.on('connection', (socket) => {
       const { chatId, senderId, text, messageType = 'text' } = data;
       
       // Save message to database
-      const message = await require('./models/Message').create({
+      const MessageModel = require('./models/Message');
+      const UserModel = require('./models/User');
+      const messageRecord = await MessageModel.create({
         chatId,
         senderId,
         text,
@@ -53,10 +69,18 @@ io.on('connection', (socket) => {
         timestamp: new Date()
       });
 
+      const sender = await UserModel.getById(senderId);
+      const message = {
+        ...messageRecord,
+        senderName: sender?.name || 'Unknown',
+        senderAvatar: sender?.avatar || null,
+      };
+
       // Get chat participants
-      const chat = await require('./models/Chat').getById(chatId);
-      const participants = await require('./models/Chat').getParticipants(chatId);
-      
+      const ChatModel = require('./models/Chat');
+      const chat = await ChatModel.getById(chatId);
+      const participants = await ChatModel.getParticipants(chatId);
+
       // Emit to all participants except sender
       participants.forEach(participant => {
         if (participant.userId !== senderId) {
@@ -114,8 +138,8 @@ initDatabase()
   .then(() => {
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
-      console.log(`Socket.IO server ready`);
-      console.log(`Accessible at: http://192.168.1.161:${PORT}`);
+      console.log('Socket.IO server ready');
+      console.log('Remember to point the Expo app to this host using EXPO_PUBLIC_API_URL and EXPO_PUBLIC_SOCKET_URL.');
     });
   })
   .catch((error) => {

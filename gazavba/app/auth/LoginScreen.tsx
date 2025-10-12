@@ -10,18 +10,25 @@ export default function LoginScreen() {
   const { login } = useAuth();
   const router = useRouter();
   const t = useContext(ThemeCtx);
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const isValidPhone = (value: string) => /^[0-9+\s()-]{7,20}$/.test(value.trim());
+
   const handleLogin = async () => {
-    if (!email || !password) {
+    if (!phone || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
+    if (!isValidPhone(phone)) {
+      Alert.alert('Invalid phone', 'Please enter a valid phone number.');
+      return;
+    }
+
     setLoading(true);
-    const result = await login({ email, password });
+    const result = await login({ phone, password });
     setLoading(false);
 
     if (result.success) {
@@ -41,14 +48,14 @@ export default function LoginScreen() {
 
         <View style={styles.form}>
           <View style={[styles.inputContainer, { backgroundColor: t.card, borderColor: t.hairline }]}>
-            <Ionicons name="mail" size={20} color={t.subtext} style={styles.inputIcon} />
+            <Ionicons name="call" size={20} color={t.subtext} style={styles.inputIcon} />
             <TextInput
               style={[styles.input, { color: t.text }]}
-              placeholder="Email"
+              placeholder="Phone Number"
               placeholderTextColor={t.subtext}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
               autoCapitalize="none"
             />
           </View>
@@ -80,7 +87,7 @@ export default function LoginScreen() {
             onPress={() => router.push('/auth/RegisterScreen')}
           >
             <Text style={[styles.registerText, { color: t.subtext }]}>
-              Don't have an account? <Text style={{ color: t.primary }}>Sign up</Text>
+              Don&apos;t have an account? <Text style={{ color: t.primary }}>Sign up</Text>
             </Text>
           </TouchableOpacity>
         </View>

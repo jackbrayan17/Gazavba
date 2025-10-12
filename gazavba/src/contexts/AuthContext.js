@@ -1,8 +1,11 @@
 // src/contexts/AuthContext.js
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ApiService from '../services/api';
 import SocketService from '../services/socket';
+
+const normalizePhone = (value) => (value ?? '').replace(/[^\d+]/g, '').trim();
+const normalizeEmail = (value) => (value ?? '').trim().toLowerCase();
 
 const TOKEN_KEY = 'auth_token';
 
@@ -35,7 +38,7 @@ export function AuthProvider({ children }) {
             SocketService.connect(stored, res.user.id);
           }
         }
-      } catch (e) {
+      } catch (_error) {
         // invalid token or network error → clean state
         await AsyncStorage.removeItem(TOKEN_KEY);
         setUser(null);
@@ -49,7 +52,7 @@ export function AuthProvider({ children }) {
     })();
   }, []);
 
-  const commonLoginSideEffects = async (u, t) => {
+  const commonLoginSideEffects = useCallback(async (u, t) => {
     await AsyncStorage.setItem(TOKEN_KEY, t);
     setUser(u);
     setToken(t);
@@ -59,11 +62,22 @@ export function AuthProvider({ children }) {
       await ApiService.setOnlineStatus(true);
       setIsOnline(true);
     } catch {}
-  };
+  }, []);
 
-  const login = async (credentials) => {
+  const login = useCallback(async (credentials) => {
     try {
-      const res = await ApiService.login(credentials); // expects { user, token }
+      const payload = { ...credentials };
+      if (payload.phone) {
+        payload.phone = normalizePhone(payload.phone);
+      }
+      if (payload.email) {
+        payload.email = normalizeEmail(payload.email);
+      }
+      if (payload.identifier && !payload.identifier.includes('@')) {
+        payload.identifier = normalizePhone(payload.identifier);
+      }
+
+      const res = await ApiService.login(payload); // expects { user, token }
       const u = res?.user;
       const t = res?.token;
       if (!t) throw new Error('No token in response');
@@ -72,12 +86,23 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Login failed' };
     }
-  };
+  }, [commonLoginSideEffects]);
 
   // Handle backends that don't return token on /register → fallback to login
-  const register = async (userData) => {
+  const register = useCallback(async (userData) => {
     try {
-      const res = await ApiService.register(userData); // may or may not include token
+      const payload = {
+        ...userData,
+        name: userData?.name?.trim() ?? '',
+        phone: normalizePhone(userData?.phone),
+        email: userData?.email ? normalizeEmail(userData.email) : undefined,
+      };
+
+      if (!payload.phone) {
+        return { success: false, error: 'Phone number is required' };
+      }
+
+      const res = await ApiService.register(payload); // may or may not include token
       const u = res?.user;
       const t = res?.token;
 
@@ -87,12 +112,12 @@ export function AuthProvider({ children }) {
       }
 
       // no token? try immediate login with provided creds
-      const { email, password } = userData;
-      if (!email || !password) {
+      const { phone, password } = payload;
+      if (!phone || !password) {
         return { success: false, error: 'Registered. Please sign in.' };
       }
 
-      const res2 = await ApiService.login({ email, password });
+      const res2 = await ApiService.login({ phone, password });
       const u2 = res2?.user;
       const t2 = res2?.token;
       if (!t2) throw new Error('No token after register+login');
@@ -102,9 +127,9 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Registration failed' };
     }
-  };
+  }, [commonLoginSideEffects]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       if (token) {
         await ApiService.logout();
@@ -117,9 +142,9 @@ export function AuthProvider({ children }) {
     setIsOnline(false);
     ApiService.setToken(null);
     SocketService.disconnect();
-  };
+  }, [token]);
 
-  const updateProfile = async (updates) => {
+  const updateProfile = useCallback(async (updates) => {
     try {
       const updated = await ApiService.updateProfile(updates);
       setUser(updated);
@@ -127,9 +152,9 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Update failed' };
     }
-  };
+  }, []);
 
-  const uploadAvatar = async (uri) => {
+  const uploadAvatar = useCallback(async (uri) => {
     try {
       const res = await ApiService.uploadAvatar(uri);
       setUser((prev) => ({ ...prev, avatar: res.avatar }));
@@ -137,9 +162,9 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Upload failed' };
     }
-  };
+  }, []);
 
-  const setOnlineStatus = async (status) => {
+  const setOnlineStatus = useCallback(async (status) => {
     try {
       await ApiService.setOnlineStatus(status);
       setIsOnline(status);
@@ -147,7 +172,7 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { success: false, error: e?.message ?? 'Status update failed' };
     }
-  };
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -162,7 +187,7 @@ export function AuthProvider({ children }) {
       uploadAvatar,
       setOnlineStatus,
     }),
-    [user, token, initialized, isOnline]
+    [user, token, initialized, isOnline, login, register, logout, updateProfile, uploadAvatar, setOnlineStatus]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
