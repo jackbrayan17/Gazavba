@@ -1,13 +1,6 @@
 # Gazavba
 
-Gazavba is a realtime messaging experience built with an Expo (React Native) frontend and a Node.js + SQLite backend. This guide explains how to get the API and the client running together, how authentication works with phone numbers, which demo credentials are seeded automatically, and how to generate a signed Android build.
-
-## Product highlights
-
-- Modern chat list with unread badges, quick search, and a one-tap dark/light toggle that persists between sessions.
-- Contact sync that highlights friends who already use Gazavba and offers share/copy actions to invite others.
-- Rich stories/statuses supporting photos, videos, or text posts, plus quick download and read receipts.
-- Profile management with live avatar uploads, editable display name, and online presence indicators.
+Gazavba is a realtime messaging experience built with an Expo (React Native) frontend and a Node.js + SQLite backend. This guide explains how to get the API and the client running together, how authentication works with phone numbers, and which demo credentials are seeded automatically.
 
 ## Requirements
 
@@ -48,24 +41,6 @@ npx expo start
 - When testing on a real device, replace `localhost` with your computer's LAN IP (e.g. `http://192.168.x.x:3000`).
 
 The frontend automatically stores the JWT it receives, reconnects sockets when the app restarts, and shows inline alerts for registration/login failures.
-
-### Build an Android APK (standalone client)
-
-Expo development builds are recommended for QA, but you can also produce a distributable `.apk` straight from this repository:
-
-```bash
-# 1. Install native tooling once (inside the project root)
-npx expo prebuild --platform android
-
-# 2. Generate a release build (Gradle will emit app/build/outputs/apk/release/app-release.apk)
-cd android
-./gradlew assembleRelease
-
-# 3. (Optional) Install it on a connected device/emulator
-adb install -r app/build/outputs/apk/release/app-release.apk
-```
-
-When using the Expo Application Services (EAS) workflow you can alternatively run `eas build -p android --profile preview` to produce a signed artifact in the cloud.
 
 ## Seeded demo accounts
 
