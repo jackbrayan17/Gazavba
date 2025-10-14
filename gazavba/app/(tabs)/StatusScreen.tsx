@@ -24,6 +24,7 @@ import ApiService from "../../src/services/api";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { ThemeCtx } from "../_layout";
 import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
+import StatusRing from "../../src/components/StatusRing";
 
 const WINDOW_WIDTH = Dimensions.get("window").width;
 
@@ -74,8 +75,21 @@ export default function StatusScreen() {
     setRefreshing(false);
   }, []);
 
-  const myStatuses = useMemo(() => statuses.filter((item) => item.userId === user?.id), [statuses, user?.id]);
-  const otherStatuses = useMemo(() => statuses.filter((item) => item.userId !== user?.id), [statuses, user?.id]);
+  const myStatuses = useMemo(
+    () =>
+      statuses
+        .filter((item) => item.userId === user?.id)
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
+    [statuses, user?.id]
+  );
+  const latestMyStatus = myStatuses[0] ?? null;
+  const otherStatuses = useMemo(
+    () =>
+      statuses
+        .filter((item) => item.userId !== user?.id)
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
+    [statuses, user?.id]
+  );
 
   const groupedByUser = useMemo(() => {
     const byUser = new Map<string, StatusItem[]>();
@@ -221,25 +235,73 @@ export default function StatusScreen() {
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity onPress={handleAddMediaStatus}>
-              <View
-                style={{
-                  borderWidth: 2,
-                  borderColor: theme.mint,
-                  borderRadius: 40,
-                  padding: 2,
-                }}
-              >
-                <Image
-                  source={{ uri: resolveAssetUri(myStatuses[0]?.mediaUrl || myStatuses[0]?.userAvatar) || resolveAssetUri(user?.avatar) || "https://ui-avatars.com/api/?name=Me&background=0C3B2E&color=fff" }}
-                  style={{ width: 64, height: 64, borderRadius: 32 }}
+              <View style={{ width: 74, height: 74, justifyContent: "center", alignItems: "center" }}>
+                <StatusRing
+                  size={72}
+                  segments={Math.max(1, myStatuses.length)}
+                  color={theme.mint}
+                  backgroundColor={theme.card}
                 />
+                <Image
+                  source={{
+                    uri:
+                      resolveAssetUri(latestMyStatus?.mediaUrl || latestMyStatus?.userAvatar) ||
+                      resolveAssetUri(user?.avatar) ||
+                      "https://ui-avatars.com/api/?name=Me&background=0C3B2E&color=fff",
+                  }}
+                  style={{ position: "absolute", width: 60, height: 60, borderRadius: 30 }}
+                />
+                {latestMyStatus && (
+                  <View
+                    style={{
+                      position: "absolute",
+                      right: -4,
+                      bottom: -4,
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      borderWidth: 2,
+                      borderColor: theme.card,
+                      backgroundColor: theme.card,
+                    }}
+                  >
+                    {latestMyStatus.type === "text" ? (
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 4, maxWidth: 72 }}>
+                        <Text numberOfLines={2} style={{ fontSize: 10, color: theme.text, fontWeight: "700" }}>
+                          {latestMyStatus.content}
+                        </Text>
+                      </View>
+                    ) : latestMyStatus.mediaUrl ? (
+                      <Image
+                        source={{ uri: resolveAssetUri(latestMyStatus.mediaUrl) || undefined }}
+                        style={{ width: 40, height: 40 }}
+                        resizeMode="cover"
+                      />
+                    ) : null}
+                    {latestMyStatus.type === "video" && (
+                      <View
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "rgba(0,0,0,0.35)",
+                        }}
+                      >
+                        <Ionicons name="play" size={14} color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                )}
               </View>
             </TouchableOpacity>
             <View style={{ marginLeft: 12, flex: 1 }}>
               <Text style={{ fontWeight: "700", fontSize: 16, color: theme.text }}>My Status</Text>
               <Text style={{ color: theme.subtext, marginTop: 2 }}>
-                {myStatuses[0]?.createdAt
-                  ? `Last updated ${new Date(myStatuses[0].createdAt).toLocaleString()}`
+                {latestMyStatus?.createdAt
+                  ? `Last updated ${new Date(latestMyStatus.createdAt).toLocaleString()}`
                   : "Share a photo, video, or thought"}
               </Text>
             </View>
@@ -260,7 +322,7 @@ export default function StatusScreen() {
           </View>
         </View>
 
-        {groupedByUser.map(({ userId, latest, allViewed }) => (
+        {groupedByUser.map(({ userId, latest, allViewed, all }) => (
           <TouchableOpacity
             key={userId}
             onPress={() => openStatus(latest)}
@@ -276,17 +338,20 @@ export default function StatusScreen() {
               marginBottom: 12,
             }}
           >
-            <View
-              style={{
-                borderWidth: 2,
-                borderColor: allViewed ? theme.hairline : theme.mint,
-                padding: 2,
-                borderRadius: 40,
-              }}
-            >
+            <View style={{ width: 68, height: 68, justifyContent: "center", alignItems: "center" }}>
+              <StatusRing
+                size={66}
+                segments={Math.max(1, all.length)}
+                color={allViewed ? theme.hairline : theme.mint}
+                backgroundColor={theme.card}
+              />
               <Image
-                source={{ uri: resolveAssetUri(latest.userAvatar) || "https://ui-avatars.com/api/?background=0C3B2E&color=fff&name=G" }}
-                style={{ width: 60, height: 60, borderRadius: 30 }}
+                source={{
+                  uri:
+                    resolveAssetUri(latest.userAvatar) ||
+                    "https://ui-avatars.com/api/?background=0C3B2E&color=fff&name=G",
+                }}
+                style={{ position: "absolute", width: 52, height: 52, borderRadius: 26 }}
               />
             </View>
             <View style={{ marginLeft: 12, flex: 1 }}>

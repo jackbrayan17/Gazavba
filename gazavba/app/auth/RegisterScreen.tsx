@@ -1,10 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useContext, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { ThemeCtx } from '../_layout';
+
+const logo = require('../../assets/images/logo.png');
 
 function validateEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -24,6 +27,7 @@ export default function RegisterScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [avatar, setAvatar] = useState<{ uri: string; mimeType?: string; name?: string } | null>(null);
 
   const canSubmit = useMemo(() => {
     return !!name && !!email && !!phone && !!password && validateEmail(email) && validatePhone(phone) && password.length >= 6;
@@ -52,7 +56,13 @@ export default function RegisterScreen() {
       // Your AuthContext.register handles both cases:
       // - backend returns { user, token } on /auth/register
       // - OR it falls back to /auth/login with same credentials
-      const result = await register({ name: name.trim(), email: email.trim(), phone: phone.trim(), password });
+      const result = await register({
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        password,
+        avatar,
+      });
       if (result.success) {
         // Go straight to tabs (or to a profile setup screen if you have one)
         router.replace('/(tabs)/ChatListScreen');
@@ -64,16 +74,75 @@ export default function RegisterScreen() {
     }
   };
 
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Allow photo access to choose a profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    setAvatar({
+      uri: asset.uri,
+      mimeType: asset.mimeType || 'image/jpeg',
+      name: asset.fileName || 'avatar.jpg',
+    });
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.content}>
           <View style={styles.header}>
+            <Image source={logo} style={{ width: 88, height: 88, marginBottom: 20 }} resizeMode="contain" />
             <Text style={[styles.title, { color: t.primary }]}>Create Account</Text>
             <Text style={[styles.subtitle, { color: t.subtext }]}>Join Gazavba today</Text>
           </View>
 
           <View style={styles.form}>
+            <TouchableOpacity
+              onPress={handlePickAvatar}
+              activeOpacity={0.85}
+              style={{
+                alignSelf: 'center',
+                marginBottom: 24,
+                alignItems: 'center',
+              }}
+            >
+              <View style={{ borderWidth: 2, borderColor: t.mint, padding: 4, borderRadius: 60 }}>
+                <Image
+                  source={{
+                    uri:
+                      avatar?.uri ||
+                      'https://ui-avatars.com/api/?name=You&background=0C3B2E&color=fff',
+                  }}
+                  style={{ width: 96, height: 96, borderRadius: 48 }}
+                />
+                <View
+                  style={{
+                    position: 'absolute',
+                    right: -2,
+                    bottom: -2,
+                    backgroundColor: t.accent,
+                    borderRadius: 16,
+                    padding: 6,
+                  }}
+                >
+                  <Ionicons name="camera" size={16} color="#fff" />
+                </View>
+              </View>
+              <Text style={{ marginTop: 8, color: t.subtext }}>Add profile photo</Text>
+            </TouchableOpacity>
+
             <View style={[styles.inputContainer, { backgroundColor: t.card, borderColor: t.hairline }]}>
               <Ionicons name="person" size={20} color={t.subtext} style={styles.inputIcon} />
               <TextInput

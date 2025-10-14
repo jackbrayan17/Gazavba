@@ -3,6 +3,8 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const { initDatabase } = require('./config/database');
 require('dotenv').config();
 
@@ -54,8 +56,8 @@ io.on('connection', (socket) => {
   // Handle new message
   socket.on('send_message', async (data) => {
     try {
-      const { chatId, senderId, text, messageType = 'text' } = data;
-      
+      const { chatId, senderId, text, messageType = 'text', mediaUrl = null, clientId = null } = data;
+
       // Save message to database
       const MessageModel = require('./models/Message');
       const UserModel = require('./models/User');
@@ -64,6 +66,7 @@ io.on('connection', (socket) => {
         senderId,
         text,
         messageType,
+        mediaUrl,
         timestamp: new Date()
       });
 
@@ -72,6 +75,7 @@ io.on('connection', (socket) => {
         ...messageRecord,
         senderName: sender?.name || 'Unknown',
         senderAvatar: sender?.avatar || null,
+        clientId,
       };
 
       // Get chat participants
@@ -86,16 +90,17 @@ io.on('connection', (socket) => {
             message,
             chatId,
             senderId,
-            chatName: chat.name
+            chatName: chat.name,
+            clientId,
           });
         }
       });
 
       // Emit back to sender for confirmation
-      socket.emit('message_sent', message);
+      socket.emit('message_sent', { ...message, chatId });
     } catch (error) {
       console.error('Error sending message:', error);
-      socket.emit('message_error', { error: 'Failed to send message' });
+      socket.emit('message_error', { error: 'Failed to send message', clientId });
     }
   });
 

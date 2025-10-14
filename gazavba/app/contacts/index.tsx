@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { FlatList, Image, Text, TouchableOpacity, View, TextInput, Share, Alert, ActivityIndicator } from "react-native";
+import { FlatList, Image, Text, TouchableOpacity, View, TextInput, Share, Alert, ActivityIndicator, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Contacts from "expo-contacts";
@@ -37,6 +37,10 @@ export default function ContactsScreen() {
   const [inviteContacts, setInviteContacts] = useState<DeviceContact[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [addVisible, setAddVisible] = useState(false);
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [savingContact, setSavingContact] = useState(false);
 
   const loadContacts = useCallback(async () => {
     try {
@@ -161,6 +165,34 @@ export default function ContactsScreen() {
     }
   };
 
+  const handleCreateContact = async () => {
+    const name = newContactName.trim();
+    const phone = normalizePhone(newContactPhone);
+
+    if (!name || !phone) {
+      Alert.alert("Missing info", "Please provide both a name and a phone number.");
+      return;
+    }
+
+    try {
+      setSavingContact(true);
+      await Contacts.addContactAsync({
+        [Contacts.Fields.FirstName]: name,
+        [Contacts.Fields.Name]: name,
+        [Contacts.Fields.PhoneNumbers]: [{ label: 'mobile', number: phone }],
+      } as any);
+      setAddVisible(false);
+      setNewContactName("");
+      setNewContactPhone("");
+      await loadContacts();
+    } catch (error) {
+      console.error("Failed to add contact", error);
+      Alert.alert("Error", "Could not save the contact on your device.");
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
@@ -185,6 +217,25 @@ export default function ContactsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ padding: 16 }}>
         <Text style={{ fontSize: 22, fontWeight: "800", color: theme.primary, marginBottom: 12 }}>Contacts</Text>
+
+        <TouchableOpacity
+          onPress={() => setAddVisible(true)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            alignSelf: "flex-start",
+            backgroundColor: theme.card,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: theme.hairline,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            marginBottom: 12,
+          }}
+        >
+          <Ionicons name="person-add" size={18} color={theme.accent} />
+          <Text style={{ marginLeft: 8, color: theme.text, fontWeight: "600" }}>Add Contact</Text>
+        </TouchableOpacity>
 
         <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.hairline, paddingHorizontal: 12, height: 44, marginBottom: 20 }}>
           <Ionicons name="search" size={18} color={theme.subtext} />
@@ -252,6 +303,70 @@ export default function ContactsScreen() {
           }
         />
       </View>
+
+      <Modal visible={addVisible} transparent animationType="fade" onRequestClose={() => setAddVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center" }}>
+          <View
+            style={{
+              backgroundColor: theme.card,
+              borderRadius: 16,
+              width: "86%",
+              padding: 20,
+              borderWidth: 1,
+              borderColor: theme.hairline,
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "800", color: theme.text, marginBottom: 16 }}>New contact</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ marginBottom: 6, color: theme.subtext, fontWeight: "600" }}>Name</Text>
+              <TextInput
+                value={newContactName}
+                onChangeText={setNewContactName}
+                placeholder="Contact name"
+                placeholderTextColor={theme.subtext}
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.hairline,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: theme.text,
+                }}
+              />
+            </View>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ marginBottom: 6, color: theme.subtext, fontWeight: "600" }}>Phone</Text>
+              <TextInput
+                value={newContactPhone}
+                onChangeText={setNewContactPhone}
+                placeholder="Phone number"
+                placeholderTextColor={theme.subtext}
+                keyboardType="phone-pad"
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.hairline,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: theme.text,
+                }}
+              />
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 12 }}>
+              <TouchableOpacity onPress={() => setAddVisible(false)} style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+                <Text style={{ color: theme.subtext }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleCreateContact}
+                disabled={savingContact}
+                style={{ paddingHorizontal: 14, paddingVertical: 10 }}
+              >
+                <Text style={{ color: theme.mint, fontWeight: "700" }}>{savingContact ? "Saving..." : "Save"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
