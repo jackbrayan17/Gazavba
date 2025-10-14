@@ -84,6 +84,7 @@ export default function ChatDetailScreen() {
             paddingHorizontal: 15,
             paddingVertical: 8,
             fontSize: 16,
+            color: '#111',
           }}
         />
         <TouchableOpacity onPress={sendMessage} style={{ marginLeft: 10 }}>

@@ -70,6 +70,33 @@ export default function ChatListScreen() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [chats, setChats] = useState<ChatListEntry[]>([]);
+  const [statusMeta, setStatusMeta] = useState<Record<string, { unseen: number; total: number }>>({});
+
+  const loadStatuses = useCallback(async () => {
+    try {
+      const data = await ApiService.getStatuses();
+      if (!Array.isArray(data)) {
+        setStatusMeta({});
+        return;
+      }
+      const map = new Map<string, { unseen: number; total: number }>();
+      data.forEach((item: any) => {
+        const entry = map.get(item.userId) ?? { unseen: 0, total: 0 };
+        entry.total += 1;
+        if (!item.hasViewed) {
+          entry.unseen += 1;
+        }
+        map.set(item.userId, entry);
+      });
+      const next: Record<string, { unseen: number; total: number }> = {};
+      map.forEach((value, key) => {
+        next[key] = value;
+      });
+      setStatusMeta(next);
+    } catch (err) {
+      console.error("Failed to load statuses", err);
+    }
+  }, []);
 
   const loadChats = useCallback(async () => {
     try {
@@ -77,6 +104,7 @@ export default function ChatListScreen() {
       setIsLoading(true);
       const response = await ApiService.getChats();
       setChats(Array.isArray(response) ? response : []);
+      await loadStatuses();
     } catch (err: any) {
       const message = err?.message || "Unable to load conversations";
       setError(message);
@@ -86,7 +114,7 @@ export default function ChatListScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, [router, loadStatuses]);
 
   useEffect(() => {
     if (!initialized) return;
@@ -150,8 +178,9 @@ export default function ChatListScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadChats();
+    await loadStatuses();
     setRefreshing(false);
-  }, [loadChats]);
+  }, [loadChats, loadStatuses]);
 
   const filteredChats = useMemo(() => {
     if (!search.trim()) return chats;
@@ -172,6 +201,9 @@ export default function ChatListScreen() {
 
   const renderItem = ({ item }: { item: ChatListEntry }) => {
     const avatarUri = resolveAssetUri(item.avatar) || FALLBACK_AVATAR;
+    const otherId = item.otherParticipant?.id || item.otherParticipant?.userId;
+    const statusInfo = otherId ? statusMeta[otherId] : undefined;
+    const showStatusRing = !!statusInfo?.unseen;
     return (
       <TouchableOpacity
         onPress={() => openChat(item)}
@@ -179,7 +211,34 @@ export default function ChatListScreen() {
         style={[styles.card, { backgroundColor: theme.card, borderColor: theme.hairline }]}
       >
         <View style={styles.avatarWrapper}>
-          <Image source={{ uri: avatarUri }} style={styles.avatar} />
+          <View
+            style={{
+              width: showStatusRing ? 68 : 60,
+              height: showStatusRing ? 68 : 60,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {showStatusRing && (
+              <View
+                style={{
+                  position: "absolute",
+                  width: 66,
+                  height: 66,
+                  borderRadius: 33,
+                  borderWidth: 3,
+                  borderColor: theme.mint,
+                }}
+              />
+            )}
+            <Image
+              source={{ uri: avatarUri }}
+              style={[
+                styles.avatar,
+                showStatusRing && { width: 56, height: 56, borderRadius: 28 },
+              ]}
+            />
+          </View>
           {item.otherParticipant?.isOnline && <View style={[styles.onlineDot, { borderColor: theme.card }]} />}
         </View>
         <View style={styles.content}>

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useContext, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { ThemeCtx } from '../_layout';
+
+const logo = require('../../assets/images/logo.png');
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -42,6 +44,7 @@ export default function LoginScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
       <View style={styles.content}>
         <View style={styles.header}>
+          <Image source={logo} style={{ width: 88, height: 88, marginBottom: 20 }} resizeMode="contain" />
           <Text style={[styles.title, { color: t.primary }]}>Welcome to Gazavba</Text>
           <Text style={[styles.subtitle, { color: t.subtext }]}>Sign in to continue</Text>
         </View>

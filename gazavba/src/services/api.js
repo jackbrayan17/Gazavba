@@ -158,7 +158,29 @@ class ApiService {
 
   // ---------- Auth endpoints (public unless noted) ----------
   async register(userData) {
-    return this.request("/auth/register", { method: "POST", body: userData, auth: false });
+    const payload = { ...userData };
+    if (payload.avatar && typeof payload.avatar === 'object') {
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (key === 'avatar') return;
+        if (value !== undefined && value !== null) {
+          formData.append(key, String(value));
+        }
+      });
+      formData.append('avatar', {
+        uri: payload.avatar.uri,
+        type: payload.avatar.mimeType || 'image/jpeg',
+        name: payload.avatar.name || 'avatar.jpg',
+      });
+      return this.request("/auth/register", {
+        method: "POST",
+        body: formData,
+        auth: false,
+        isFormData: true,
+      });
+    }
+
+    return this.request("/auth/register", { method: "POST", body: payload, auth: false });
   }
 
   async login(credentials) {
