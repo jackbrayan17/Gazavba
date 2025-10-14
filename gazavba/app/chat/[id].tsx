@@ -9,7 +9,18 @@ import SocketService from "../../src/services/socket";
 import { ThemeCtx } from "../_layout";
 import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
 
-type Msg = { id: string; me: boolean; text: string };
+type MessageStatus = "sending" | "sent" | "delivered" | "read" | "error";
+
+type Msg = {
+  id: string;
+  clientId?: string | null;
+  me: boolean;
+  text: string;
+  status?: MessageStatus;
+  timestamp?: string;
+  messageType?: string;
+  mediaUrl?: string | null;
+};
 
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,18 +34,71 @@ export default function ChatDetailScreen() {
   const [open, setOpen] = useState(false);
   const enter = useRef(new Animated.Value(0)).current;
 
-  const handleSocketMessage = useCallback((messageData: any) => {
-    if (messageData.chatId === id) {
-      const newMessage = {
-        id: messageData.message.id,
-        me: messageData.message.senderId === user?.id,
-        text: messageData.message.text,
-        senderName: messageData.message.senderName,
-        senderAvatar: messageData.message.senderAvatar
+  const handleIncomingMessage = useCallback(
+    (messageData: any) => {
+      if (messageData.chatId !== id) return;
+      const message = messageData.message;
+      const incoming: Msg = {
+        id: message.id,
+        me: message.senderId === user?.id,
+        text: message.text,
+        timestamp: message.timestamp,
+        messageType: message.messageType,
+        mediaUrl: message.mediaUrl,
+        status:
+          message.senderId === user?.id
+            ? message.isRead
+              ? "read"
+              : "delivered"
+            : undefined,
       };
-      setData(prev => [...prev, newMessage]);
+
+      setData((prev) => {
+        // For acknowledgements we match clientId
+        if (incoming.me && message.clientId) {
+          return prev.map((item) =>
+            item.clientId === message.clientId || item.id === incoming.id
+              ? { ...item, ...incoming, status: incoming.status ?? "delivered" }
+              : item
+          );
+        }
+        return [...prev, incoming];
+      });
+    },
+    [id, user?.id]
+  );
+
+  const handleMessageSent = useCallback(
+    (message: any) => {
+      if (message.chatId !== id) return;
+      setData((prev) =>
+        prev.map((item) =>
+          item.clientId === message.clientId || item.id === message.id
+            ? {
+                ...item,
+                id: message.id,
+                text: message.text,
+                status: "delivered",
+                timestamp: message.timestamp,
+                mediaUrl: message.mediaUrl,
+                messageType: message.messageType,
+              }
+            : item
+        )
+      );
+    },
+    [id]
+  );
+
+  const handleMessageError = useCallback((payload: any) => {
+    if (payload?.clientId) {
+      setData((prev) =>
+        prev.map((item) =>
+          item.clientId === payload.clientId ? { ...item, status: "error" } : item
+        )
+      );
     }
-  }, [id, user?.id]);
+  }, []);
 
   useEffect(() => {
     Animated.timing(enter, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
@@ -44,9 +108,11 @@ export default function ChatDetailScreen() {
     }
 
     return () => {
-      SocketService.off("new_message", handleSocketMessage);
+      SocketService.off("new_message", handleIncomingMessage);
+      SocketService.off("message_sent", handleMessageSent);
+      SocketService.off("message_error", handleMessageError);
     };
-  }, [id, enter, handleSocketMessage, loadChatData, setupSocketListeners]);
+  }, [id, enter, handleIncomingMessage, handleMessageError, handleMessageSent, loadChatData, setupSocketListeners]);
 
   const loadChatData = useCallback(async () => {
     try {
@@ -61,10 +127,14 @@ export default function ChatDetailScreen() {
         me: m.senderId === user?.id,
         text: m.text,
         senderName: m.senderName,
-        senderAvatar: m.senderAvatar
+        senderAvatar: m.senderAvatar,
+        timestamp: m.timestamp,
+        messageType: m.messageType,
+        mediaUrl: m.mediaUrl,
+        status: m.senderId === user?.id ? (m.isRead ? "read" : "delivered") : undefined,
       }));
       setData(formattedMessages);
-      
+
       // Mark chat as read
       await ApiService.markChatAsRead(id!);
     } catch (error) {
@@ -73,8 +143,10 @@ export default function ChatDetailScreen() {
   }, [id, user?.id]);
 
   const setupSocketListeners = useCallback(() => {
-    SocketService.on("new_message", handleSocketMessage);
-  }, [handleSocketMessage]);
+    SocketService.on("new_message", handleIncomingMessage);
+    SocketService.on("message_sent", handleMessageSent);
+    SocketService.on("message_error", handleMessageError);
+  }, [handleIncomingMessage, handleMessageError, handleMessageSent]);
 
   const toggleMenu = () => {
     setOpen((v) => {
@@ -102,21 +174,32 @@ export default function ChatDetailScreen() {
   const send = async () => {
     const text = msg.trim();
     if (!text || !id || !user) return;
-    
+
     try {
-      // Send via Socket.IO for real-time delivery
-      SocketService.sendMessage(id, user.id, text);
-      
-      // Also send via API as backup
-      await ApiService.sendMessage({
-        chatId: id,
-        text,
-        messageType: 'text'
-      });
-      
+      const tempId = `client-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+      setData((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          clientId: tempId,
+          me: true,
+          text,
+          status: "sending",
+          messageType: "text",
+        },
+      ]);
+
+      SocketService.sendMessage(id, user.id, text, 'text', tempId);
       setMsg("");
     } catch (error) {
       console.error('Failed to send message:', error);
+      setData((prev) =>
+        prev.map((item) =>
+          item.clientId && item.clientId.startsWith('client-') && item.text === text
+            ? { ...item, status: "error" }
+            : item
+        )
+      );
     }
   };
 
@@ -180,19 +263,47 @@ export default function ChatDetailScreen() {
           data={data}
           keyExtractor={(i) => i.id}
           contentContainerStyle={{ padding: 10 }}
-          renderItem={({ item }) => (
-            <View
-              style={{
-                alignSelf: item.me ? "flex-end" : "flex-start",
-                backgroundColor: item.me ? t.bubbleMe : t.bubbleThem,
-                paddingHorizontal: 12, paddingVertical: 8,
-                borderRadius: 16, marginVertical: 4, maxWidth: "78%",
-                borderWidth: 1, borderColor: t.hairline
-              }}
-            >
-              <Text style={{ color: t.text }}>{item.text}</Text>
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const statusIcon = item.me ? item.status : undefined;
+            let iconName: any = null;
+            let iconColor = t.subtext;
+            if (statusIcon === "sending") {
+              iconName = "time-outline";
+            } else if (statusIcon === "sent") {
+              iconName = "checkmark";
+            } else if (statusIcon === "delivered") {
+              iconName = "checkmark-done-outline";
+            } else if (statusIcon === "read") {
+              iconName = "checkmark-done";
+              iconColor = t.mint;
+            } else if (statusIcon === "error") {
+              iconName = "alert-circle";
+              iconColor = "#E03131";
+            }
+
+            return (
+              <View
+                style={{
+                  alignSelf: item.me ? "flex-end" : "flex-start",
+                  backgroundColor: item.me ? t.bubbleMe : t.bubbleThem,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 16,
+                  marginVertical: 4,
+                  maxWidth: "78%",
+                  borderWidth: 1,
+                  borderColor: t.hairline,
+                }}
+              >
+                <Text style={{ color: t.text }}>{item.text}</Text>
+                {iconName && (
+                  <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 4 }}>
+                    <Ionicons name={iconName} size={14} color={iconColor} />
+                  </View>
+                )}
+              </View>
+            );
+          }}
         />
 
         {/* Input */}
@@ -202,7 +313,15 @@ export default function ChatDetailScreen() {
             onChangeText={setMsg}
             placeholder="Type a message"
             placeholderTextColor={t.subtext}
-            style={{ flex: 1, backgroundColor: "#F1F3F5", borderRadius: 24, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, color: t.text }}
+            style={{
+              flex: 1,
+              backgroundColor: "#F1F3F5",
+              borderRadius: 24,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              fontSize: 16,
+              color: "#111",
+            }}
           />
           <TouchableOpacity onPress={send} style={{ marginLeft: 10 }}>
             <Ionicons name="send" color={t.mint} size={22} />

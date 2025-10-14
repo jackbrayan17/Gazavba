@@ -139,7 +139,15 @@ export default function ProfileView() {
               onChangeText={setDisplayName}
               placeholder="Enter name"
               placeholderTextColor={theme.subtext}
-              style={{ borderWidth: 1, borderColor: theme.hairline, backgroundColor: "#F1F3F5", color: theme.text, borderRadius: 12, padding: 12, fontSize: 16 }}
+              style={{
+                borderWidth: 1,
+                borderColor: theme.hairline,
+                backgroundColor: "#F1F3F5",
+                color: "#111",
+                borderRadius: 12,
+                padding: 12,
+                fontSize: 16,
+              }}
             />
             <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 16 }}>
               <TouchableOpacity onPress={() => setEditVisible(false)} style={{ paddingHorizontal: 14, paddingVertical: 10 }}>

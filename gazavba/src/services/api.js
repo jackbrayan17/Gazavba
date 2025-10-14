@@ -198,11 +198,7 @@ class ApiService {
 
   // ---------- Auth ----------
   async register(userData) {
-    return this.request("/auth/register", {
-      method: "POST",
-      body: userData,
-      auth: false,
-    });
+    return this.request("/auth/register", { method: "POST", body: userData, auth: false });
   }
 
   async login(credentials) {

@@ -38,19 +38,36 @@ function ThemeBridge({ children }: { children: React.ReactNode }) {
   return <ThemeCtx.Provider value={theme}>{children}</ThemeCtx.Provider>;
 }
 
+function ThemedStack() {
+  const theme = React.useContext(ThemeCtx);
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        headerStyle: { backgroundColor: theme.primary },
+        headerTintColor: '#fff',
+        contentStyle: { backgroundColor: theme.bg },
+      }}
+    >
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen
+        name="contacts/index"
+        options={{ headerShown: true, headerTitle: "Contacts" }}
+      />
+      <Stack.Screen name="about" />
+      <Stack.Screen name="auth/LoginScreen" />
+      <Stack.Screen name="auth/RegisterScreen" />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <ThemeBridge>
           <AuthGate>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="contacts/index" options={{ headerShown: true, headerTitle: "Contacts" }} />
-              <Stack.Screen name="about" />
-              <Stack.Screen name="auth/LoginScreen" />
-              <Stack.Screen name="auth/RegisterScreen" />
-            </Stack>
+            <ThemedStack />
           </AuthGate>
         </ThemeBridge>
       </AuthProvider>

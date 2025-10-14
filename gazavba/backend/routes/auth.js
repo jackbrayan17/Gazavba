@@ -1,6 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
 const User = require('../models/User');
 const { JWT_SECRET } = require('../config/auth');
 
@@ -8,14 +11,63 @@ const normalizePhone = (value = '') => value.replace(/[^\d+]/g, '').trim();
 const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const router = express.Router();
 
+const resolveUploadDir = (value) => {
+  if (!value) {
+    return path.resolve(process.cwd(), 'uploads');
+  }
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
+};
+
+const uploadDir = resolveUploadDir(process.env.UPLOAD_PATH);
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `avatar-${unique}${path.extname(file.originalname)}`);
+  },
+});
+
+const avatarUpload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+});
+
+const maybeHandleAvatarUpload = (req, res, next) => {
+  const contentType = req.headers['content-type'] || '';
+  if (!contentType.includes('multipart/form-data')) {
+    next();
+    return;
+  }
+
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
+};
+
 // Register
-router.post('/register', async (req, res) => {
+router.post('/register', maybeHandleAvatarUpload, async (req, res) => {
   try {
     const { name, email, phone, password, avatar, role } = req.body;
 
     const trimmedName = (name || '').trim();
     const trimmedEmail = (email || '').trim().toLowerCase();
     const normalizedPhone = normalizePhone(phone);
+    const avatarUrl = req.file ? `/uploads/${req.file.filename}` : (avatar || null);
 
     if (!trimmedName || !normalizedPhone || !password) {
       return res.status(400).json({ error: 'Name, phone number and password are required' });
@@ -47,7 +99,7 @@ router.post('/register', async (req, res) => {
       name: trimmedName,
       email: trimmedEmail || null,
       phone: normalizedPhone,
-      avatar,
+      avatar: avatarUrl,
       password: hashedPassword,
       role: role || 'user',
       isSuperAdmin: false,
