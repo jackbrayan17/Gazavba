@@ -1,19 +1,23 @@
 // src/contexts/AuthContext.js
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import ApiService from '../services/api';
-import SocketService from '../services/socket';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
+import ApiService from "../services/api";
+import SocketService from "../services/socket"; // supposé existant
 
-const normalizePhone = (value) => (value ?? '').replace(/[^\d+]/g, '').trim();
-const normalizeEmail = (value) => (value ?? '').trim().toLowerCase();
-
-const TOKEN_KEY = 'auth_token';
+const normalizePhone = (value) => (value ?? "").replace(/[^\d+]/g, "").trim();
+const normalizeEmail = (value) => (value ?? "").trim().toLowerCase();
 
 const AuthContext = createContext(null);
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
 };
 
@@ -23,28 +27,26 @@ export function AuthProvider({ children }) {
   const [initialized, setInitialized] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
 
-  // Boot: load token, verify session, connect socket
+  // Boot: charge le token via ApiService (SecureStore/localStorage), vérifie la session, ouvre le socket
   useEffect(() => {
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(TOKEN_KEY);
-        if (stored) {
-          setToken(stored);
-          ApiService.setToken(stored);
-          const res = await ApiService.verifyToken(); // expects { user: {...} } when valid
-          if (res && res.user) {
+        await ApiService.init(); // charge le token persistant
+        if (ApiService.token) {
+          setToken(ApiService.token);
+          const res = await ApiService.verifyToken(); // doit renvoyer { user }
+          if (res?.user) {
             setUser(res.user);
             setIsOnline(true);
-            SocketService.connect(stored, res.user.id);
+            SocketService.connect(ApiService.token, res.user.id);
           }
         }
       } catch (_error) {
-        // invalid token or network error → clean state
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        // token invalide / réseau KO → on nettoie local
+        await ApiService.setToken(null);
         setUser(null);
         setToken(null);
         setIsOnline(false);
-        ApiService.setToken(null);
         SocketService.disconnect();
       } finally {
         setInitialized(true);
@@ -53,10 +55,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const commonLoginSideEffects = useCallback(async (u, t) => {
-    await AsyncStorage.setItem(TOKEN_KEY, t);
+    await ApiService.setToken(t); // persiste via SecureStore ou localStorage (web)
     setUser(u);
     setToken(t);
-    ApiService.setToken(t);
     SocketService.connect(t, u.id);
     try {
       await ApiService.setOnlineStatus(true);
@@ -64,70 +65,72 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
-  const login = useCallback(async (credentials) => {
-    try {
-      const payload = { ...credentials };
-      if (payload.phone) {
-        payload.phone = normalizePhone(payload.phone);
-      }
-      if (payload.email) {
-        payload.email = normalizeEmail(payload.email);
-      }
-      if (payload.identifier && !payload.identifier.includes('@')) {
-        payload.identifier = normalizePhone(payload.identifier);
-      }
+  const login = useCallback(
+    async (credentials) => {
+      try {
+        const payload = { ...credentials };
+        if (payload.phone) payload.phone = normalizePhone(payload.phone);
+        if (payload.email) payload.email = normalizeEmail(payload.email);
+        if (payload.identifier && !payload.identifier.includes("@")) {
+          payload.identifier = normalizePhone(payload.identifier);
+        }
 
-      const res = await ApiService.login(payload); // expects { user, token }
-      const u = res?.user;
-      const t = res?.token;
-      if (!t) throw new Error('No token in response');
-      await commonLoginSideEffects(u, t);
-      return { success: true, user: u };
-    } catch (e) {
-      return { success: false, error: e?.message ?? 'Login failed' };
-    }
-  }, [commonLoginSideEffects]);
-
-  // Handle backends that don't return token on /register → fallback to login
-  const register = useCallback(async (userData) => {
-    try {
-      const payload = {
-        ...userData,
-        name: userData?.name?.trim() ?? '',
-        phone: normalizePhone(userData?.phone),
-        email: userData?.email ? normalizeEmail(userData.email) : undefined,
-      };
-
-      if (!payload.phone) {
-        return { success: false, error: 'Phone number is required' };
-      }
-
-      const res = await ApiService.register(payload); // may or may not include token
-      const u = res?.user;
-      const t = res?.token;
-
-      if (t) {
+        const res = await ApiService.login(payload); // { user, token }
+        const u = res?.user;
+        const t = res?.token;
+        if (!t) throw new Error("No token in response");
         await commonLoginSideEffects(u, t);
         return { success: true, user: u };
+      } catch (e) {
+        return { success: false, error: e?.message ?? "Login failed" };
       }
+    },
+    [commonLoginSideEffects]
+  );
 
-      // no token? try immediate login with provided creds
-      const { phone, password } = payload;
-      if (!phone || !password) {
-        return { success: false, error: 'Registered. Please sign in.' };
+  // Register (si le backend ne renvoie pas de token, fallback sur login)
+  const register = useCallback(
+    async (userData) => {
+      try {
+        const payload = {
+          ...userData,
+          name: userData?.name?.trim() ?? "",
+          phone: normalizePhone(userData?.phone),
+          email: userData?.email ? normalizeEmail(userData.email) : undefined,
+        };
+
+        if (!payload.phone) {
+          return { success: false, error: "Phone number is required" };
+        }
+
+        const res = await ApiService.register(payload); // peut renvoyer { user, token } ou non
+        const u = res?.user;
+        const t = res?.token;
+
+        if (t) {
+          await commonLoginSideEffects(u, t);
+          return { success: true, user: u };
+        }
+
+        // Pas de token? Tentative de login immédiat avec phone/password
+        const { phone, password } = payload;
+        if (!phone || !password) {
+          return { success: false, error: "Registered. Please sign in." };
+        }
+
+        const res2 = await ApiService.login({ phone, password });
+        const u2 = res2?.user;
+        const t2 = res2?.token;
+        if (!t2) throw new Error("No token after register+login");
+
+        await commonLoginSideEffects(u2, t2);
+        return { success: true, user: u2 };
+      } catch (e) {
+        return { success: false, error: e?.message ?? "Registration failed" };
       }
-
-      const res2 = await ApiService.login({ phone, password });
-      const u2 = res2?.user;
-      const t2 = res2?.token;
-      if (!t2) throw new Error('No token after register+login');
-
-      await commonLoginSideEffects(u2, t2);
-      return { success: true, user: u2 };
-    } catch (e) {
-      return { success: false, error: e?.message ?? 'Registration failed' };
-    }
-  }, [commonLoginSideEffects]);
+    },
+    [commonLoginSideEffects]
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -136,11 +139,10 @@ export function AuthProvider({ children }) {
         await ApiService.setOnlineStatus(false);
       }
     } catch {}
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    await ApiService.setToken(null);
     setUser(null);
     setToken(null);
     setIsOnline(false);
-    ApiService.setToken(null);
     SocketService.disconnect();
   }, [token]);
 
@@ -150,7 +152,7 @@ export function AuthProvider({ children }) {
       setUser(updated);
       return { success: true, user: updated };
     } catch (e) {
-      return { success: false, error: e?.message ?? 'Update failed' };
+      return { success: false, error: e?.message ?? "Update failed" };
     }
   }, []);
 
@@ -160,7 +162,7 @@ export function AuthProvider({ children }) {
       setUser((prev) => ({ ...prev, avatar: res.avatar }));
       return { success: true, avatar: res.avatar };
     } catch (e) {
-      return { success: false, error: e?.message ?? 'Upload failed' };
+      return { success: false, error: e?.message ?? "Upload failed" };
     }
   }, []);
 
@@ -170,7 +172,7 @@ export function AuthProvider({ children }) {
       setIsOnline(status);
       return { success: true };
     } catch (e) {
-      return { success: false, error: e?.message ?? 'Status update failed' };
+      return { success: false, error: e?.message ?? "Status update failed" };
     }
   }, []);
 
@@ -187,7 +189,18 @@ export function AuthProvider({ children }) {
       uploadAvatar,
       setOnlineStatus,
     }),
-    [user, token, initialized, isOnline, login, register, logout, updateProfile, uploadAvatar, setOnlineStatus]
+    [
+      user,
+      token,
+      initialized,
+      isOnline,
+      login,
+      register,
+      logout,
+      updateProfile,
+      uploadAvatar,
+      setOnlineStatus,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

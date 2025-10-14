@@ -2,12 +2,16 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
-// If you prefer AsyncStorage: import AsyncStorage from "@react-native-async-storage/async-storage";
 
+// -----------------------------
+// URL resolution (env / dev LAN)
+// -----------------------------
 const trimTrailingSlash = (value) => value.replace(/\/+$/, "");
+
 const API_ENV_URL = process.env.EXPO_PUBLIC_API_URL
   ? trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL)
   : null;
+
 const SOCKET_ENV_URL = process.env.EXPO_PUBLIC_SOCKET_URL
   ? trimTrailingSlash(process.env.EXPO_PUBLIC_SOCKET_URL)
   : null;
@@ -19,13 +23,10 @@ const resolveHostFromExpo = () => {
     expoConfig.extra?.expoGo?.debuggerHost,
     expoConfig.extra?.expoGo?.hostUri,
   ];
-
   for (const candidate of candidates) {
     if (candidate) {
       const host = candidate.split(":")[0];
-      if (host) {
-        return `http://${host}:3000`;
-      }
+      if (host) return `http://${host}:3000`;
     }
   }
   return null;
@@ -52,10 +53,7 @@ const BASE_URL = resolveBaseUrl();
 
 const resolveSocketBaseUrl = () => {
   if (SOCKET_ENV_URL) return SOCKET_ENV_URL;
-
-  if (BASE_URL.endsWith("/api")) {
-    return BASE_URL.slice(0, -4);
-  }
+  if (BASE_URL.endsWith("/api")) return BASE_URL.slice(0, -4);
   return BASE_URL;
 };
 
@@ -64,28 +62,73 @@ const SOCKET_BASE_URL = resolveSocketBaseUrl();
 export const getApiBaseUrl = () => BASE_URL;
 export const getSocketBaseUrl = () => SOCKET_BASE_URL;
 
-// ---- Storage helpers ----
+// -----------------------------
+// Storage helpers (SecureStore / web fallback)
+// -----------------------------
 const TOKEN_KEY = "access_token";
+
+const webStore = {
+  async setItemAsync(key, value) {
+    if (typeof window !== "undefined" && window?.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
+  },
+  async getItemAsync(key) {
+    if (typeof window !== "undefined" && window?.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+    return null;
+  },
+  async deleteItemAsync(key) {
+    if (typeof window !== "undefined" && window?.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+  },
+};
+
+const store = Platform.OS === "web" ? webStore : SecureStore;
+
 async function saveToken(token) {
-  if (token) {
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
-  } else {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  try {
+    if (token) {
+      await store.setItemAsync(TOKEN_KEY, token);
+    } else {
+      await store.deleteItemAsync(TOKEN_KEY);
+    }
+  } catch (e) {
+    // en dernier recours (p. ex. SecureStore indispo), on ne crashe pas
+    if (Platform.OS === "web") {
+      try {
+        webStore.setItemAsync(TOKEN_KEY, token);
+      } catch {}
+    }
   }
 }
 
 async function loadToken() {
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  try {
+    return await store.getItemAsync(TOKEN_KEY);
+  } catch {
+    if (Platform.OS === "web") {
+      try {
+        return await webStore.getItemAsync(TOKEN_KEY);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
 }
 
-// ---- API service ----
+// -----------------------------
+// API service
+// -----------------------------
 class ApiService {
   constructor() {
     this.token = null;
     this.initialized = false;
   }
 
-  // Call once on app start (e.g., in your root component)
   async init() {
     if (this.initialized) return;
     this.token = await loadToken();
@@ -99,21 +142,18 @@ class ApiService {
 
   getHeaders(isFormData = false) {
     const headers = {};
-    if (!isFormData) {
-      headers["Content-Type"] = "application/json";
-    }
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
+    if (!isFormData) headers["Content-Type"] = "application/json";
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
     return headers;
   }
 
-  // Unified low-level request
-  async request(endpoint, { method = "GET", body, auth = true, isFormData = false, headers = {} } = {}) {
+  async request(
+    endpoint,
+    { method = "GET", body, auth = true, isFormData = false, headers = {} } = {}
+  ) {
     const url = `${BASE_URL}${endpoint}`;
 
     if (auth && !this.token) {
-      // Prevent protected calls without a token
       throw new Error("Access token required");
     }
 
@@ -130,24 +170,24 @@ class ApiService {
     try {
       response = await fetch(url, config);
     } catch (netErr) {
-      // Network/connection error
       throw new Error(`Network error: ${netErr?.message || netErr}`);
     }
 
-    // Try to parse JSON, fall back to text
+    const raw = await response.text();
     let payload;
-    const text = await response.text();
     try {
-      payload = text ? JSON.parse(text) : {};
+      payload = raw ? JSON.parse(raw) : {};
     } catch {
-      payload = { message: text };
+      payload = { message: raw };
     }
 
     if (!response.ok) {
-      // Convenient message extraction
-      const msg = payload?.error || payload?.message || `Request failed (${response.status})`;
+      const msg =
+        payload?.error ||
+        payload?.message ||
+        `Request failed (${response.status})`;
       if (response.status === 401) {
-        // Optional: auto-clear token on invalid session
+        // Optionnel: invalider la session localement
         // await this.setToken(null);
       }
       throw new Error(msg);
@@ -156,38 +196,49 @@ class ApiService {
     return payload;
   }
 
-  // ---------- Auth endpoints (public unless noted) ----------
+  // ---------- Auth ----------
   async register(userData) {
-    return this.request("/auth/register", { method: "POST", body: userData, auth: false });
+    return this.request("/auth/register", {
+      method: "POST",
+      body: userData,
+      auth: false,
+    });
   }
 
   async login(credentials) {
-    const data = await this.request("/auth/login", { method: "POST", body: credentials, auth: false });
-    // If your backend returns { token, user }, persist the token here:
+    const data = await this.request("/auth/login", {
+      method: "POST",
+      body: credentials,
+      auth: false,
+    });
     if (data?.token) await this.setToken(data.token);
     return data;
   }
 
   async verifyToken() {
-    // Usually requires auth
     return this.request("/auth/verify", { auth: true });
   }
 
   async logout() {
     try {
       await this.request("/auth/logout", { method: "POST", auth: true });
+    } catch {
+      // même si le backend échoue, on nettoie localement
     } finally {
       await this.setToken(null);
     }
   }
 
-  // ---------- User endpoints ----------
+  // ---------- Users ----------
   async getUsers() {
     return this.request("/users", { auth: true });
   }
 
   async searchUsers(query) {
-    return this.request(`/users/search?q=${encodeURIComponent(query)}`, { auth: true });
+    return this.request(
+      `/users/search?q=${encodeURIComponent(query)}`,
+      { auth: true }
+    );
   }
 
   async getUserProfile() {
@@ -195,22 +246,35 @@ class ApiService {
   }
 
   async updateProfile(updates) {
-    return this.request("/users/profile", { method: "PUT", body: updates, auth: true });
+    return this.request("/users/profile", {
+      method: "PUT",
+      body: updates,
+      auth: true,
+    });
   }
 
   async uploadAvatar(image) {
-    const payload = typeof image === 'string' ? { uri: image } : image;
+    const payload = typeof image === "string" ? { uri: image } : image;
     const formData = new FormData();
     formData.append("avatar", {
       uri: payload?.uri,
       type: payload?.mimeType || "image/jpeg",
       name: payload?.name || "avatar.jpg",
     });
-    return this.request("/users/avatar", { method: "POST", body: formData, isFormData: true, auth: true });
+    return this.request("/users/avatar", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+      auth: true,
+    });
   }
 
   async setOnlineStatus(isOnline) {
-    return this.request("/users/online", { method: "POST", body: { isOnline }, auth: true });
+    return this.request("/users/online", {
+      method: "POST",
+      body: { isOnline },
+      auth: true,
+    });
   }
 
   async matchContacts(phoneNumbers = []) {
@@ -227,7 +291,11 @@ class ApiService {
   }
 
   async createChat(chatData) {
-    return this.request("/chats", { method: "POST", body: chatData, auth: true });
+    return this.request("/chats", {
+      method: "POST",
+      body: chatData,
+      auth: true,
+    });
   }
 
   async getChat(chatId) {
@@ -235,24 +303,40 @@ class ApiService {
   }
 
   async markChatAsRead(chatId) {
-    return this.request(`/chats/${chatId}/read`, { method: "POST", auth: true });
+    return this.request(`/chats/${chatId}/read`, {
+      method: "POST",
+      auth: true,
+    });
   }
 
   // ---------- Messages ----------
   async getMessages(chatId, limit = 50, offset = 0) {
-    return this.request(`/messages/chat/${chatId}?limit=${limit}&offset=${offset}`, { auth: true });
+    return this.request(
+      `/messages/chat/${chatId}?limit=${limit}&offset=${offset}`,
+      { auth: true }
+    );
   }
 
   async sendMessage(messageData) {
-    return this.request("/messages", { method: "POST", body: messageData, auth: true });
+    return this.request("/messages", {
+      method: "POST",
+      body: messageData,
+      auth: true,
+    });
   }
 
   async markMessageAsRead(messageId) {
-    return this.request(`/messages/${messageId}/read`, { method: "POST", auth: true });
+    return this.request(`/messages/${messageId}/read`, {
+      method: "POST",
+      auth: true,
+    });
   }
 
   async deleteMessage(messageId) {
-    return this.request(`/messages/${messageId}`, { method: "DELETE", auth: true });
+    return this.request(`/messages/${messageId}`, {
+      method: "DELETE",
+      auth: true,
+    });
   }
 
   async getUnreadCount(chatId) {
@@ -269,22 +353,35 @@ class ApiService {
   }
 
   async createTextStatus(content) {
-    return this.request("/statuses/text", { method: "POST", body: { content: content?.trim?.() ?? content }, auth: true });
+    return this.request("/statuses/text", {
+      method: "POST",
+      body: { content: content?.trim?.() ?? content },
+      auth: true,
+    });
   }
 
-  async createMediaStatus({ uri, mimeType = "image/jpeg", name = "status.jpg", content = "" }) {
+  async createMediaStatus({
+    uri,
+    mimeType = "image/jpeg",
+    name = "status.jpg",
+    content = "",
+  }) {
     const formData = new FormData();
-    formData.append("media", {
-      uri,
-      type: mimeType,
-      name,
-    });
+    formData.append("media", { uri, type: mimeType, name });
     formData.append("content", content);
-    return this.request("/statuses/media", { method: "POST", body: formData, isFormData: true, auth: true });
+    return this.request("/statuses/media", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+      auth: true,
+    });
   }
 
   async markStatusAsViewed(statusId) {
-    return this.request(`/statuses/${statusId}/view`, { method: "POST", auth: true });
+    return this.request(`/statuses/${statusId}/view`, {
+      method: "POST",
+      auth: true,
+    });
   }
 
   async getStatusViewers(statusId) {
@@ -292,7 +389,10 @@ class ApiService {
   }
 
   async deleteStatus(statusId) {
-    return this.request(`/statuses/${statusId}`, { method: "DELETE", auth: true });
+    return this.request(`/statuses/${statusId}`, {
+      method: "DELETE",
+      auth: true,
+    });
   }
 
   async getUnseenStatusCount() {

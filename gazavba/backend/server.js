@@ -1,4 +1,7 @@
 /* eslint-env node */
+const fs = require('fs');
+const path = require('path');
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
