@@ -19,6 +19,10 @@ export default function LoginScreen() {
   const isValidPhone = (value: string) => /^[0-9+\s()-]{7,20}$/.test(value.trim());
 
   const handleLogin = async () => {
+    console.log('[LoginScreen] login button pressed', {
+      hasPhone: Boolean(phone?.trim()),
+      phoneLength: phone?.length || 0,
+    });
     if (!phone || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -34,8 +38,10 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (result.success) {
+      console.log('[LoginScreen] login success navigating to chats');
       router.replace('/(tabs)/ChatListScreen');
     } else {
+      console.warn('[LoginScreen] login failed', result.error);
       Alert.alert('Login Failed', result.error);
     }
   };

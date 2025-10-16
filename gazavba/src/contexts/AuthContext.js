@@ -10,8 +10,28 @@ import React, {
 import ApiService from "../services/api";
 import SocketService from "../services/socket"; // supposé existant
 
+const LOG_TAG = "[AuthContext]";
+
 const normalizePhone = (value) => (value ?? "").replace(/[^\d+]/g, "").trim();
 const normalizeEmail = (value) => (value ?? "").trim().toLowerCase();
+
+const sanitizeForLog = (value) => {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(sanitizeForLog);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, val]) => {
+        const lowered = key.toLowerCase();
+        if (lowered.includes("password") || lowered.includes("token")) {
+          return [key, typeof val === "string" ? "***" : "[redacted]"];
+        }
+        return [key, sanitizeForLog(val)];
+      })
+    );
+  }
+  return value;
+};
 
 const AuthContext = createContext(null);
 
@@ -31,9 +51,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
+        console.log(`${LOG_TAG} bootstrapping session`);
         await ApiService.init(); // charge le token persistant
         if (ApiService.token) {
           setToken(ApiService.token);
+          console.log(`${LOG_TAG} verifying persisted token`);
           const res = await ApiService.verifyToken(); // doit renvoyer { user }
           if (res?.user) {
             setUser(res.user);
@@ -42,6 +64,7 @@ export function AuthProvider({ children }) {
           }
         }
       } catch (_error) {
+        console.warn(`${LOG_TAG} bootstrap failed`, _error);
         // token invalide / réseau KO → on nettoie local
         await ApiService.setToken(null);
         setUser(null);
@@ -50,6 +73,7 @@ export function AuthProvider({ children }) {
         SocketService.disconnect();
       } finally {
         setInitialized(true);
+        console.log(`${LOG_TAG} bootstrap finished`);
       }
     })();
   }, []);
@@ -62,7 +86,10 @@ export function AuthProvider({ children }) {
     try {
       await ApiService.setOnlineStatus(true);
       setIsOnline(true);
-    } catch {}
+      console.log(`${LOG_TAG} online status set to true`);
+    } catch (err) {
+      console.warn(`${LOG_TAG} failed to set online status`, err?.message || err);
+    }
   }, []);
 
   const login = useCallback(
@@ -75,13 +102,16 @@ export function AuthProvider({ children }) {
           payload.identifier = normalizePhone(payload.identifier);
         }
 
+        console.log(`${LOG_TAG} login attempt`, sanitizeForLog(payload));
         const res = await ApiService.login(payload); // { user, token }
         const u = res?.user;
         const t = res?.token;
         if (!t) throw new Error("No token in response");
         await commonLoginSideEffects(u, t);
+        console.log(`${LOG_TAG} login success`, { userId: u?.id, hasToken: !!t });
         return { success: true, user: u };
       } catch (e) {
+        console.error(`${LOG_TAG} login failed`, e);
         return { success: false, error: e?.message ?? "Login failed" };
       }
     },
@@ -103,12 +133,14 @@ export function AuthProvider({ children }) {
           return { success: false, error: "Phone number is required" };
         }
 
+        console.log(`${LOG_TAG} register attempt`, sanitizeForLog(payload));
         const res = await ApiService.register(payload); // peut renvoyer { user, token } ou non
         const u = res?.user;
         const t = res?.token;
 
         if (t) {
           await commonLoginSideEffects(u, t);
+          console.log(`${LOG_TAG} register success with token`, { userId: u?.id });
           return { success: true, user: u };
         }
 
@@ -124,8 +156,10 @@ export function AuthProvider({ children }) {
         if (!t2) throw new Error("No token after register+login");
 
         await commonLoginSideEffects(u2, t2);
+        console.log(`${LOG_TAG} register fallback login success`, { userId: u2?.id });
         return { success: true, user: u2 };
       } catch (e) {
+        console.error(`${LOG_TAG} register failed`, e);
         return { success: false, error: e?.message ?? "Registration failed" };
       }
     },
@@ -134,6 +168,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
+      console.log(`${LOG_TAG} logout requested`);
       if (token) {
         await ApiService.logout();
         await ApiService.setOnlineStatus(false);
@@ -144,6 +179,7 @@ export function AuthProvider({ children }) {
     setToken(null);
     setIsOnline(false);
     SocketService.disconnect();
+    console.log(`${LOG_TAG} logout completed`);
   }, [token]);
 
   const updateProfile = useCallback(async (updates) => {
