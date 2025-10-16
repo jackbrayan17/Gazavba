@@ -1,82 +1,90 @@
 /* eslint-env node */
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const mysql = require('mysql2/promise');
+require('dotenv').config();
 
-const dbPath = process.env.DB_PATH || path.join(__dirname, '../database.sqlite'); // eslint-disable-line no-undef
-const db = new sqlite3.Database(dbPath);
+// Crée une variable globale pour la pool MySQL
+let pool;
 
-const run = (sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.run(sql, params, (err) => {
-      if (err) {
-        console.error(`[DB] Failed to run statement: ${sql}`, err);
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
-
-const columnExists = (table, column) =>
-  new Promise((resolve, reject) => {
-    db.all(`PRAGMA table_info(${table})`, (err, rows) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-
-      resolve(rows.some((row) => row.name === column));
-    });
-  });
-
-const ensureColumn = async (table, column, definition) => {
-  const exists = await columnExists(table, column);
-  if (!exists) {
-    await run(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
-    console.log(`[DB] Added missing column ${column} on ${table}`);
+/**
+ * Fonction pour exécuter une requête SQL
+ * @param {string} sql - La requête SQL
+ * @param {Array} params - Les paramètres à injecter
+ */
+const run = async (sql, params = []) => {
+  try {
+    if (!pool) throw new Error("Database not initialized");
+    const [result] = await pool.query(sql, params);
+    return result;
+  } catch (err) {
+    console.error(`[DB] Error running SQL: ${sql}`, err);
+    throw err;
   }
 };
 
-// Initialize database tables
+/**
+ * Initialise la connexion à la base MySQL
+ */
 const initDatabase = async () => {
+  try {
+    pool = mysql.createPool({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      port: process.env.DB_PORT || 3306,
+      connectionLimit: 10,
+    });
+
+    // Test de connexion
+    await pool.query('SELECT 1');
+    console.log('✅ Connected to MySQL Database');
+
+    // Création des tables si elles n’existent pas
+    await createTables();
+  } catch (error) {
+    console.error('❌ Failed to connect to MySQL database:', error);
+    process.exit(1);
+  }
+};
+
+/**
+ * Crée les tables nécessaires si elles n'existent pas
+ */
+const createTables = async () => {
   await run(`
     CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE,
-      phone TEXT UNIQUE,
+      id VARCHAR(255) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE,
+      phone VARCHAR(50) UNIQUE,
       avatar TEXT,
       password TEXT,
-      role TEXT DEFAULT 'user',
+      role VARCHAR(50) DEFAULT 'user',
       isSuperAdmin BOOLEAN DEFAULT 0,
       isOnline BOOLEAN DEFAULT 0,
       lastSeen DATETIME,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
 
-  await ensureColumn('users', 'password', 'password TEXT');
-  await ensureColumn('users', 'role', "role TEXT DEFAULT 'user'");
-  await ensureColumn('users', 'isSuperAdmin', 'isSuperAdmin BOOLEAN DEFAULT 0');
-
   await run(`
     CREATE TABLE IF NOT EXISTS chats (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      type TEXT DEFAULT 'direct',
-      createdBy TEXT,
+      id VARCHAR(255) PRIMARY KEY,
+      name VARCHAR(255),
+      type VARCHAR(50) DEFAULT 'direct',
+      createdBy VARCHAR(255),
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (createdBy) REFERENCES users(id)
     )
   `);
 
   await run(`
     CREATE TABLE IF NOT EXISTS chat_participants (
-      id TEXT PRIMARY KEY,
-      chatId TEXT,
-      userId TEXT,
+      id VARCHAR(255) PRIMARY KEY,
+      chatId VARCHAR(255),
+      userId VARCHAR(255),
       joinedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (chatId) REFERENCES chats(id),
       FOREIGN KEY (userId) REFERENCES users(id)
@@ -85,11 +93,11 @@ const initDatabase = async () => {
 
   await run(`
     CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY,
-      chatId TEXT,
-      senderId TEXT,
+      id VARCHAR(255) PRIMARY KEY,
+      chatId VARCHAR(255),
+      senderId VARCHAR(255),
       text TEXT,
-      messageType TEXT DEFAULT 'text',
+      messageType VARCHAR(50) DEFAULT 'text',
       mediaUrl TEXT,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
       isRead BOOLEAN DEFAULT 0,
@@ -100,9 +108,9 @@ const initDatabase = async () => {
 
   await run(`
     CREATE TABLE IF NOT EXISTS statuses (
-      id TEXT PRIMARY KEY,
-      userId TEXT,
-      type TEXT DEFAULT 'text',
+      id VARCHAR(255) PRIMARY KEY,
+      userId VARCHAR(255),
+      type VARCHAR(50) DEFAULT 'text',
       content TEXT,
       mediaUrl TEXT,
       expiresAt DATETIME,
@@ -113,9 +121,9 @@ const initDatabase = async () => {
 
   await run(`
     CREATE TABLE IF NOT EXISTS status_views (
-      id TEXT PRIMARY KEY,
-      statusId TEXT,
-      viewerId TEXT,
+      id VARCHAR(255) PRIMARY KEY,
+      statusId VARCHAR(255),
+      viewerId VARCHAR(255),
       viewedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (statusId) REFERENCES statuses(id),
       FOREIGN KEY (viewerId) REFERENCES users(id)
@@ -124,16 +132,16 @@ const initDatabase = async () => {
 
   await run(`
     CREATE TABLE IF NOT EXISTS message_reads (
-      id TEXT PRIMARY KEY,
-      messageId TEXT,
-      userId TEXT,
+      id VARCHAR(255) PRIMARY KEY,
+      messageId VARCHAR(255),
+      userId VARCHAR(255),
       readAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (messageId) REFERENCES messages(id),
       FOREIGN KEY (userId) REFERENCES users(id)
     )
   `);
 
-  console.log('Database tables initialized');
+  console.log('✅ Database tables checked and initialized');
 };
 
-module.exports = { db, initDatabase };
+module.exports = { initDatabase, run };

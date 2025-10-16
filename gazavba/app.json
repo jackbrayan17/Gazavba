@@ -33,8 +33,7 @@
         "RECORD_AUDIO",
         "VIBRATE",
         "INTERNET",
-        "READ_MEDIA_IMAGES",
-        "READ_MEDIA_VIDEO"
+        "READ_MEDIA_IMAGES","READ_MEDIA_VIDEO","READ_MEDIA_AUDIO","READ_EXTERNAL_STORAGE"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -65,7 +64,8 @@
         }
       ],
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-media-library"
     ],
     "updates": {
       "url": "https://u.expo.dev/",

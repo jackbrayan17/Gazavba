@@ -4,9 +4,12 @@ import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 
 // -----------------------------
-// URL resolution (env / dev LAN)
+// URL resolution (env / prod default / dev LAN)
 // -----------------------------
 const trimTrailingSlash = (value) => value.replace(/\/+$/, "");
+
+const DEFAULT_API_URL = "https://gazavba.eeuez.com/api";
+const DEFAULT_SOCKET_URL = "https://gazavba.eeuez.com";
 
 const API_ENV_URL = process.env.EXPO_PUBLIC_API_URL
   ? trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL)
@@ -33,15 +36,22 @@ const resolveHostFromExpo = () => {
 };
 
 function resolveBaseUrl() {
+  // 1) Env variables (prioritaires)
   if (API_ENV_URL) return API_ENV_URL;
 
+  // 2) Production -> domaine de prod par défaut
+  if (process.env.NODE_ENV === "production") return DEFAULT_API_URL;
+
+  // 3) Dev sous Expo (LAN)
   const expoHost = resolveHostFromExpo();
   if (expoHost) return `${expoHost}/api`;
 
+  // 4) Dev web
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return `${window.location.protocol}//${window.location.hostname}:3000/api`;
   }
 
+  // 5) Dev émulateurs / local
   const host =
     Platform.OS === "android" ? "10.0.2.2" :
     Platform.OS === "ios" ? "localhost" :
@@ -52,7 +62,13 @@ function resolveBaseUrl() {
 const BASE_URL = resolveBaseUrl();
 
 const resolveSocketBaseUrl = () => {
+  // 1) Env variables (prioritaires)
   if (SOCKET_ENV_URL) return SOCKET_ENV_URL;
+
+  // 2) Production -> domaine de prod par défaut
+  if (process.env.NODE_ENV === "production") return DEFAULT_SOCKET_URL;
+
+  // 3) Déduire depuis BASE_URL (retirer "/api" si présent)
   if (BASE_URL.endsWith("/api")) return BASE_URL.slice(0, -4);
   return BASE_URL;
 };
@@ -95,8 +111,7 @@ async function saveToken(token) {
     } else {
       await store.deleteItemAsync(TOKEN_KEY);
     }
-  } catch (e) {
-    // en dernier recours (p. ex. SecureStore indispo), on ne crashe pas
+  } catch {
     if (Platform.OS === "web") {
       try {
         webStore.setItemAsync(TOKEN_KEY, token);
