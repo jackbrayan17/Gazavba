@@ -19,6 +19,7 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import { ThemeCtx } from "../_layout";
 import { useThemeController } from "../../src/contexts/ThemeContext";
 import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
+import useMatchedContacts from "../../src/hooks/useMatchedContacts";
 
 export type ChatListEntry = {
   id: string;
@@ -70,33 +71,24 @@ export default function ChatListScreen() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [chats, setChats] = useState<ChatListEntry[]>([]);
-  const [statusMeta, setStatusMeta] = useState<Record<string, { unseen: number; total: number }>>({});
+  const [statusFeed, setStatusFeed] = useState<any[]>([]);
+  const { matchIdSet, permissionState, refresh: refreshMatches } = useMatchedContacts(user?.id);
+  const canViewContactStatuses = permissionState === "granted";
 
   const loadStatuses = useCallback(async () => {
     try {
       const data = await ApiService.getStatuses();
-      if (!Array.isArray(data)) {
-        setStatusMeta({});
-        return;
-      }
-      const map = new Map<string, { unseen: number; total: number }>();
-      data.forEach((item: any) => {
-        const entry = map.get(item.userId) ?? { unseen: 0, total: 0 };
-        entry.total += 1;
-        if (!item.hasViewed) {
-          entry.unseen += 1;
-        }
-        map.set(item.userId, entry);
+      const list = Array.isArray(data) ? data : [];
+      const filtered = list.filter((item: any) => {
+        if (item.userId === user?.id) return true;
+        if (!canViewContactStatuses) return false;
+        return matchIdSet.has(item.userId);
       });
-      const next: Record<string, { unseen: number; total: number }> = {};
-      map.forEach((value, key) => {
-        next[key] = value;
-      });
-      setStatusMeta(next);
+      setStatusFeed(filtered);
     } catch (err) {
       console.error("Failed to load statuses", err);
     }
-  }, []);
+  }, [canViewContactStatuses, matchIdSet, user?.id]);
 
   const loadChats = useCallback(async () => {
     try {
@@ -177,10 +169,12 @@ export default function ChatListScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    if (canViewContactStatuses) {
+      await refreshMatches();
+    }
     await loadChats();
-    await loadStatuses();
     setRefreshing(false);
-  }, [loadChats, loadStatuses]);
+  }, [canViewContactStatuses, loadChats, refreshMatches]);
 
   const filteredChats = useMemo(() => {
     if (!search.trim()) return chats;
@@ -189,6 +183,21 @@ export default function ChatListScreen() {
       item.displayName?.toLowerCase().includes(term) || item.lastMessage?.toLowerCase().includes(term)
     );
   }, [chats, search]);
+
+  const statusMeta = useMemo(() => {
+    const meta: Record<string, { unseen: number; total: number }> = {};
+    statusFeed.forEach((item: any) => {
+      const key = item.userId;
+      if (!key || key === user?.id) return;
+      const entry = meta[key] ?? { unseen: 0, total: 0 };
+      entry.total += 1;
+      if (!item.hasViewed) {
+        entry.unseen += 1;
+      }
+      meta[key] = entry;
+    });
+    return meta;
+  }, [statusFeed, user?.id]);
 
   const openChat = (chat: ChatListEntry) => {
     router.push({

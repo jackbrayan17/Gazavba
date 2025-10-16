@@ -18,6 +18,7 @@ import {
   View,
   RefreshControl,
   Alert,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ApiService from "../../src/services/api";
@@ -25,6 +26,7 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import { ThemeCtx } from "../_layout";
 import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
 import StatusRing from "../../src/components/StatusRing";
+import useMatchedContacts from "../../src/hooks/useMatchedContacts";
 
 const WINDOW_WIDTH = Dimensions.get("window").width;
 
@@ -52,6 +54,15 @@ export default function StatusScreen() {
   const [textComposerVisible, setTextComposerVisible] = useState(false);
   const [textContent, setTextContent] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const {
+    matchIdSet,
+    permissionState,
+    requestAccess,
+    refresh: refreshMatches,
+    supportsContacts,
+  } = useMatchedContacts(user?.id);
+
+  const canViewContactStatuses = permissionState === "granted";
 
   const loadStatuses = async () => {
     try {
@@ -71,9 +82,15 @@ export default function StatusScreen() {
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
-    await loadStatuses();
-    setRefreshing(false);
-  }, []);
+    try {
+      await loadStatuses();
+      if (canViewContactStatuses) {
+        await refreshMatches();
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [canViewContactStatuses, refreshMatches]);
 
   const myStatuses = useMemo(
     () =>
@@ -83,13 +100,17 @@ export default function StatusScreen() {
     [statuses, user?.id]
   );
   const latestMyStatus = myStatuses[0] ?? null;
-  const otherStatuses = useMemo(
-    () =>
-      statuses
-        .filter((item) => item.userId !== user?.id)
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
-    [statuses, user?.id]
-  );
+  const otherStatuses = useMemo(() => {
+    const filtered = statuses
+      .filter((item) => item.userId !== user?.id)
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    if (!canViewContactStatuses) {
+      return [] as StatusItem[];
+    }
+
+    return filtered.filter((item) => matchIdSet.has(item.userId));
+  }, [statuses, user?.id, canViewContactStatuses, matchIdSet]);
 
   const groupedByUser = useMemo(() => {
     const byUser = new Map<string, StatusItem[]>();
@@ -208,6 +229,71 @@ export default function StatusScreen() {
     }
   };
 
+  const renderPermissionNotice = () => {
+    if (!supportsContacts) {
+      return (
+        <View
+          style={{
+            backgroundColor: theme.card,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: theme.hairline,
+            padding: 16,
+            marginBottom: 16,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "700", fontSize: 16 }}>Contacts unavailable</Text>
+          <Text style={{ color: theme.subtext, marginTop: 8 }}>
+            This device does not provide contact access. You can still post your own status updates.
+          </Text>
+        </View>
+      );
+    }
+
+    if (canViewContactStatuses) {
+      return null;
+    }
+
+    const denied = permissionState === "denied";
+
+    return (
+      <View
+        style={{
+          backgroundColor: theme.card,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: theme.hairline,
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <Text style={{ color: theme.text, fontWeight: "700", fontSize: 16 }}>See friends' stories</Text>
+        <Text style={{ color: theme.subtext, marginTop: 8 }}>
+          Allow Gazavba to read your contacts so we can display status updates from people saved in your phone.
+        </Text>
+        <TouchableOpacity
+          onPress={denied ? () => Linking.openSettings().catch(() => {}) : requestAccess}
+          style={{
+            marginTop: 14,
+            backgroundColor: theme.primary,
+            paddingVertical: 10,
+            borderRadius: 12,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>
+            {denied ? "Open settings" : "Grant access"}
+          </Text>
+        </TouchableOpacity>
+        {denied && (
+          <Text style={{ color: theme.subtext, marginTop: 6 }}>
+            Permission was previously denied. Enable contact access in your device settings to sync friends.
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: "center", justifyContent: "center" }}>
@@ -223,6 +309,7 @@ export default function StatusScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}>
         <Text style={{ fontSize: 22, fontWeight: "800", color: theme.primary, marginBottom: 12 }}>Status</Text>
 
+        {renderPermissionNotice()}
         <View
           style={{
             backgroundColor: theme.card,

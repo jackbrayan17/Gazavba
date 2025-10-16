@@ -34,6 +34,12 @@ export default function RegisterScreen() {
   }, [name, email, phone, password]);
 
   const handleRegister = async () => {
+    console.log('[RegisterScreen] submit pressed', {
+      hasName: Boolean(name?.trim()),
+      hasEmail: Boolean(email?.trim()),
+      hasPhone: Boolean(phone?.trim()),
+      passwordLength: password?.length || 0,
+    });
     if (!name || !email || !phone || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -53,6 +59,7 @@ export default function RegisterScreen() {
 
     try {
       setSubmitting(true);
+      console.log('[RegisterScreen] attempting register');
       // Your AuthContext.register handles both cases:
       // - backend returns { user, token } on /auth/register
       // - OR it falls back to /auth/login with same credentials
@@ -65,12 +72,15 @@ export default function RegisterScreen() {
       });
       if (result.success) {
         // Go straight to tabs (or to a profile setup screen if you have one)
+        console.log('[RegisterScreen] register success navigating to chats');
         router.replace('/(tabs)/ChatListScreen');
       } else {
+        console.warn('[RegisterScreen] register failed', result.error);
         Alert.alert('Registration Failed', result.error ?? 'Please try again.');
       }
     } finally {
       setSubmitting(false);
+      console.log('[RegisterScreen] register flow completed');
     }
   };
 

@@ -11,6 +11,26 @@ const trimTrailingSlash = (value) => value.replace(/\/+$/, "");
 const DEFAULT_API_URL = "https://gazavba.eeuez.com/api";
 const DEFAULT_SOCKET_URL = "https://gazavba.eeuez.com";
 
+const LOG_TAG = "[ApiService]";
+
+const sanitizeForLog = (value) => {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(sanitizeForLog);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, val]) => {
+        const lowered = key.toLowerCase();
+        if (lowered.includes("password") || lowered.includes("token")) {
+          return [key, typeof val === "string" ? "***" : "[redacted]"];
+        }
+        return [key, sanitizeForLog(val)];
+      })
+    );
+  }
+  return value;
+};
+
 const API_ENV_URL = process.env.EXPO_PUBLIC_API_URL
   ? trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL)
   : null;
@@ -60,6 +80,10 @@ function resolveBaseUrl() {
 }
 
 const BASE_URL = resolveBaseUrl();
+
+console.log(
+  `${LOG_TAG} Base URL resolved to: ${BASE_URL} (env=${process.env.NODE_ENV || "unknown"})`
+);
 
 const resolveSocketBaseUrl = () => {
   // 1) Env variables (prioritaires)
@@ -148,11 +172,13 @@ class ApiService {
     if (this.initialized) return;
     this.token = await loadToken();
     this.initialized = true;
+    console.log(`${LOG_TAG} init completed`, { hasToken: !!this.token });
   }
 
   async setToken(token) {
     this.token = token || null;
     await saveToken(this.token);
+    console.log(`${LOG_TAG} token updated`, { hasToken: !!this.token });
   }
 
   getHeaders(isFormData = false) {
@@ -181,10 +207,22 @@ class ApiService {
       config.body = isFormData ? body : JSON.stringify(body);
     }
 
+    const logContext = {
+      method,
+      url,
+      authRequired: auth,
+      hasToken: !!this.token,
+      headers: sanitizeForLog(config.headers),
+      body: body !== undefined ? (isFormData ? "[form-data]" : sanitizeForLog(body)) : undefined,
+    };
+
+    console.log(`${LOG_TAG} → Request`, logContext);
+
     let response;
     try {
       response = await fetch(url, config);
     } catch (netErr) {
+      console.error(`${LOG_TAG} ✕ Network error`, { ...logContext, error: netErr });
       throw new Error(`Network error: ${netErr?.message || netErr}`);
     }
 
@@ -196,7 +234,14 @@ class ApiService {
       payload = { message: raw };
     }
 
+    const responseLog = {
+      status: response.status,
+      ok: response.ok,
+      payload: sanitizeForLog(payload),
+    };
+
     if (!response.ok) {
+      console.warn(`${LOG_TAG} ← Error response`, { ...logContext, ...responseLog });
       const msg =
         payload?.error ||
         payload?.message ||
@@ -207,6 +252,8 @@ class ApiService {
       }
       throw new Error(msg);
     }
+
+    console.log(`${LOG_TAG} ← Response`, { ...logContext, ...responseLog });
 
     return payload;
   }
