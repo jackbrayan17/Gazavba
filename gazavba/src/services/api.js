@@ -7,7 +7,7 @@ import * as SecureStore from "expo-secure-store";
 // -----------------------------
 const trimTrailingSlash = (value) => (value ? value.replace(/\/+$/, "") : value);
 
-const DEFAULT_API_URL = "https://gazavba.eeuez.com";
+const DEFAULT_API_URL = "https://gazavba.eeuez.com/api";
 const DEFAULT_SOCKET_URL = "https://gazavba.eeuez.com";
 
 const LOG_TAG = "[ApiService]";
@@ -41,8 +41,12 @@ const SOCKET_ENV_URL = process.env.EXPO_PUBLIC_SOCKET_URL
 const BASE_URL = trimTrailingSlash(API_ENV_URL || DEFAULT_API_URL);
 const SOCKET_BASE_URL = trimTrailingSlash(SOCKET_ENV_URL || DEFAULT_SOCKET_URL);
 
-console.log(`${LOG_TAG} Base URL resolved to: ${BASE_URL} (env=${process.env.NODE_ENV || "unknown"})`);
-console.log(`${LOG_TAG} Socket Base URL resolved to: ${SOCKET_BASE_URL}`);
+console.log(
+  `${LOG_TAG} Base URL resolved to: ${BASE_URL} (env=${process.env.NODE_ENV || "unknown"}, envVar=${API_ENV_URL ? "EXPO_PUBLIC_API_URL" : "<default>"})`
+);
+console.log(
+  `${LOG_TAG} Socket Base URL resolved to: ${SOCKET_BASE_URL} (envVar=${SOCKET_ENV_URL ? "EXPO_PUBLIC_SOCKET_URL" : "<default>"})`
+);
 
 export const getApiBaseUrl = () => BASE_URL;
 export const getSocketBaseUrl = () => SOCKET_BASE_URL;
@@ -205,7 +209,16 @@ class ApiService {
 
   // --- Health check (diagnostic rapide) ---
   async ping() {
-    return this.request("/health", { method: "GET", auth: false, timeoutMs: 8000 });
+    const logContext = { endpoint: "/health", baseUrl: BASE_URL };
+    try {
+      console.log(`${LOG_TAG} → Ping`, logContext);
+      const data = await this.request("/health", { method: "GET", auth: false, timeoutMs: 8000 });
+      console.log(`${LOG_TAG} ← Ping OK`, { ...logContext, data: sanitizeForLog(data) });
+      return data;
+    } catch (error) {
+      console.error(`${LOG_TAG} ← Ping failed`, { ...logContext, error: error?.message || error });
+      throw error;
+    }
   }
 
   // ---------- Auth ----------
