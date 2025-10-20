@@ -1,14 +1,13 @@
 // src/services/api.js
 import { Platform } from "react-native";
-import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 
 // -----------------------------
-// URL resolution (env / prod default / dev LAN)
+// URL resolution (FORCÉ: domaine prod en dev & prod)
 // -----------------------------
-const trimTrailingSlash = (value) => value.replace(/\/+$/, "");
+const trimTrailingSlash = (value) => (value ? value.replace(/\/+$/, "") : value);
 
-const DEFAULT_API_URL = "https://gazavba.eeuez.com/api";
+const DEFAULT_API_URL = "https://gazavba.eeuez.com";
 const DEFAULT_SOCKET_URL = "https://gazavba.eeuez.com";
 
 const LOG_TAG = "[ApiService]";
@@ -31,73 +30,19 @@ const sanitizeForLog = (value) => {
   return value;
 };
 
+// EXPO_PUBLIC_* optionnels, sinon domaine forcé
 const API_ENV_URL = process.env.EXPO_PUBLIC_API_URL
   ? trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL)
   : null;
-
 const SOCKET_ENV_URL = process.env.EXPO_PUBLIC_SOCKET_URL
   ? trimTrailingSlash(process.env.EXPO_PUBLIC_SOCKET_URL)
   : null;
 
-const resolveHostFromExpo = () => {
-  const expoConfig = Constants?.expoConfig ?? {};
-  const candidates = [
-    expoConfig.hostUri,
-    expoConfig.extra?.expoGo?.debuggerHost,
-    expoConfig.extra?.expoGo?.hostUri,
-  ];
-  for (const candidate of candidates) {
-    if (candidate) {
-      const host = candidate.split(":")[0];
-      if (host) return `http://${host}:3000`;
-    }
-  }
-  return null;
-};
+const BASE_URL = trimTrailingSlash(API_ENV_URL || DEFAULT_API_URL);
+const SOCKET_BASE_URL = trimTrailingSlash(SOCKET_ENV_URL || DEFAULT_SOCKET_URL);
 
-function resolveBaseUrl() {
-  // 1) Env variables (prioritaires)
-  if (API_ENV_URL) return API_ENV_URL;
-
-  // 2) Production -> domaine de prod par défaut
-  if (process.env.NODE_ENV === "production") return DEFAULT_API_URL;
-
-  // 3) Dev sous Expo (LAN)
-  const expoHost = resolveHostFromExpo();
-  if (expoHost) return `${expoHost}/api`;
-
-  // 4) Dev web
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:3000/api`;
-  }
-
-  // 5) Dev émulateurs / local
-  const host =
-    Platform.OS === "android" ? "10.0.2.2" :
-    Platform.OS === "ios" ? "localhost" :
-    "127.0.0.1";
-  return `http://${host}:3000/api`;
-}
-
-const BASE_URL = resolveBaseUrl();
-
-console.log(
-  `${LOG_TAG} Base URL resolved to: ${BASE_URL} (env=${process.env.NODE_ENV || "unknown"})`
-);
-
-const resolveSocketBaseUrl = () => {
-  // 1) Env variables (prioritaires)
-  if (SOCKET_ENV_URL) return SOCKET_ENV_URL;
-
-  // 2) Production -> domaine de prod par défaut
-  if (process.env.NODE_ENV === "production") return DEFAULT_SOCKET_URL;
-
-  // 3) Déduire depuis BASE_URL (retirer "/api" si présent)
-  if (BASE_URL.endsWith("/api")) return BASE_URL.slice(0, -4);
-  return BASE_URL;
-};
-
-const SOCKET_BASE_URL = resolveSocketBaseUrl();
+console.log(`${LOG_TAG} Base URL resolved to: ${BASE_URL} (env=${process.env.NODE_ENV || "unknown"})`);
+console.log(`${LOG_TAG} Socket Base URL resolved to: ${SOCKET_BASE_URL}`);
 
 export const getApiBaseUrl = () => BASE_URL;
 export const getSocketBaseUrl = () => SOCKET_BASE_URL;
@@ -137,9 +82,7 @@ async function saveToken(token) {
     }
   } catch {
     if (Platform.OS === "web") {
-      try {
-        webStore.setItemAsync(TOKEN_KEY, token);
-      } catch {}
+      try { webStore.setItemAsync(TOKEN_KEY, token); } catch {}
     }
   }
 }
@@ -149,13 +92,22 @@ async function loadToken() {
     return await store.getItemAsync(TOKEN_KEY);
   } catch {
     if (Platform.OS === "web") {
-      try {
-        return await webStore.getItemAsync(TOKEN_KEY);
-      } catch {
-        return null;
-      }
+      try { return await webStore.getItemAsync(TOKEN_KEY); } catch { return null; }
     }
     return null;
+  }
+}
+
+// -----------------------------
+// fetch helper with timeout
+// -----------------------------
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } finally {
+    clearTimeout(id);
   }
 }
 
@@ -183,6 +135,7 @@ class ApiService {
 
   getHeaders(isFormData = false) {
     const headers = {};
+    headers["Accept"] = "application/json";
     if (!isFormData) headers["Content-Type"] = "application/json";
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     return headers;
@@ -190,9 +143,10 @@ class ApiService {
 
   async request(
     endpoint,
-    { method = "GET", body, auth = true, isFormData = false, headers = {} } = {}
+    { method = "GET", body, auth = true, isFormData = false, headers = {}, timeoutMs = 15000 } = {}
   ) {
-    const url = `${BASE_URL}${endpoint}`;
+    const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const url = `${BASE_URL}${path}`;
 
     if (auth && !this.token) {
       throw new Error("Access token required");
@@ -208,22 +162,22 @@ class ApiService {
     }
 
     const logContext = {
-      method,
-      url,
-      authRequired: auth,
-      hasToken: !!this.token,
+      method, url, authRequired: auth, hasToken: !!this.token,
       headers: sanitizeForLog(config.headers),
       body: body !== undefined ? (isFormData ? "[form-data]" : sanitizeForLog(body)) : undefined,
     };
-
     console.log(`${LOG_TAG} → Request`, logContext);
 
     let response;
     try {
-      response = await fetch(url, config);
+      response = await fetchWithTimeout(url, config, timeoutMs);
     } catch (netErr) {
-      console.error(`${LOG_TAG} ✕ Network error`, { ...logContext, error: netErr });
-      throw new Error(`Network error: ${netErr?.message || netErr}`);
+      const errMsg =
+        netErr?.name === "AbortError"
+          ? `Network timeout after ${timeoutMs}ms`
+          : (netErr?.message || "Network request failed");
+      console.error(`${LOG_TAG} ✕ Network error`, { ...logContext, error: errMsg });
+      throw new Error(`Network error: ${errMsg}`);
     }
 
     const raw = await response.text();
@@ -234,33 +188,49 @@ class ApiService {
       payload = { message: raw };
     }
 
-    const responseLog = {
-      status: response.status,
-      ok: response.ok,
-      payload: sanitizeForLog(payload),
-    };
+    const responseLog = { status: response.status, ok: response.ok, payload: sanitizeForLog(payload) };
 
     if (!response.ok) {
       console.warn(`${LOG_TAG} ← Error response`, { ...logContext, ...responseLog });
-      const msg =
-        payload?.error ||
-        payload?.message ||
-        `Request failed (${response.status})`;
+      const msg = payload?.error || payload?.message || `Request failed (${response.status})`;
       if (response.status === 401) {
-        // Optionnel: invalider la session localement
-        // await this.setToken(null);
+        // éventuel: await this.setToken(null);
       }
       throw new Error(msg);
     }
 
     console.log(`${LOG_TAG} ← Response`, { ...logContext, ...responseLog });
-
     return payload;
+  }
+
+  // --- Health check (diagnostic rapide) ---
+  async ping() {
+    return this.request("/health", { method: "GET", auth: false, timeoutMs: 8000 });
   }
 
   // ---------- Auth ----------
   async register(userData) {
-    return this.request("/auth/register", { method: "POST", body: userData, auth: false });
+    const { avatar, name, email, phone, password } = userData || {};
+    const fd = new FormData();
+
+    if (avatar?.uri) {
+      fd.append("avatar", {
+        uri: avatar.uri,
+        name: avatar.name || "avatar.jpg",
+        type: avatar.mimeType || "image/jpeg",
+      });
+    }
+    if (name !== undefined) fd.append("name", `${name}`);
+    if (email !== undefined) fd.append("email", `${email}`);
+    if (phone !== undefined) fd.append("phone", `${phone}`);
+    if (password !== undefined) fd.append("password", `${password}`);
+
+    return this.request("/auth/register", {
+      method: "POST",
+      body: fd,
+      isFormData: true,
+      auth: false,
+    });
   }
 
   async login(credentials) {
@@ -281,7 +251,6 @@ class ApiService {
     try {
       await this.request("/auth/logout", { method: "POST", auth: true });
     } catch {
-      // même si le backend échoue, on nettoie localement
     } finally {
       await this.setToken(null);
     }
@@ -293,10 +262,7 @@ class ApiService {
   }
 
   async searchUsers(query) {
-    return this.request(
-      `/users/search?q=${encodeURIComponent(query)}`,
-      { auth: true }
-    );
+    return this.request(`/users/search?q=${encodeURIComponent(query)}`, { auth: true });
   }
 
   async getUserProfile() {
@@ -304,11 +270,7 @@ class ApiService {
   }
 
   async updateProfile(updates) {
-    return this.request("/users/profile", {
-      method: "PUT",
-      body: updates,
-      auth: true,
-    });
+    return this.request("/users/profile", { method: "PUT", body: updates, auth: true });
   }
 
   async uploadAvatar(image) {
@@ -319,28 +281,15 @@ class ApiService {
       type: payload?.mimeType || "image/jpeg",
       name: payload?.name || "avatar.jpg",
     });
-    return this.request("/users/avatar", {
-      method: "POST",
-      body: formData,
-      isFormData: true,
-      auth: true,
-    });
+    return this.request("/users/avatar", { method: "POST", body: formData, isFormData: true, auth: true });
   }
 
   async setOnlineStatus(isOnline) {
-    return this.request("/users/online", {
-      method: "POST",
-      body: { isOnline },
-      auth: true,
-    });
+    return this.request("/users/online", { method: "POST", body: { isOnline }, auth: true });
   }
 
   async matchContacts(phoneNumbers = []) {
-    return this.request("/users/match-contacts", {
-      method: "POST",
-      body: { contacts: phoneNumbers },
-      auth: true,
-    });
+    return this.request("/users/match-contacts", { method: "POST", body: { contacts: phoneNumbers }, auth: true });
   }
 
   // ---------- Chats ----------
@@ -349,11 +298,7 @@ class ApiService {
   }
 
   async createChat(chatData) {
-    return this.request("/chats", {
-      method: "POST",
-      body: chatData,
-      auth: true,
-    });
+    return this.request("/chats", { method: "POST", body: chatData, auth: true });
   }
 
   async getChat(chatId) {
@@ -361,40 +306,24 @@ class ApiService {
   }
 
   async markChatAsRead(chatId) {
-    return this.request(`/chats/${chatId}/read`, {
-      method: "POST",
-      auth: true,
-    });
+    return this.request(`/chats/${chatId}/read`, { method: "POST", auth: true });
   }
 
   // ---------- Messages ----------
   async getMessages(chatId, limit = 50, offset = 0) {
-    return this.request(
-      `/messages/chat/${chatId}?limit=${limit}&offset=${offset}`,
-      { auth: true }
-    );
+    return this.request(`/messages/chat/${chatId}?limit=${limit}&offset=${offset}`, { auth: true });
   }
 
   async sendMessage(messageData) {
-    return this.request("/messages", {
-      method: "POST",
-      body: messageData,
-      auth: true,
-    });
+    return this.request("/messages", { method: "POST", body: messageData, auth: true });
   }
 
   async markMessageAsRead(messageId) {
-    return this.request(`/messages/${messageId}/read`, {
-      method: "POST",
-      auth: true,
-    });
+    return this.request(`/messages/${messageId}/read`, { method: "POST", auth: true });
   }
 
   async deleteMessage(messageId) {
-    return this.request(`/messages/${messageId}`, {
-      method: "DELETE",
-      auth: true,
-    });
+    return this.request(`/messages/${messageId}`, { method: "DELETE", auth: true });
   }
 
   async getUnreadCount(chatId) {
@@ -411,35 +340,18 @@ class ApiService {
   }
 
   async createTextStatus(content) {
-    return this.request("/statuses/text", {
-      method: "POST",
-      body: { content: content?.trim?.() ?? content },
-      auth: true,
-    });
+    return this.request("/statuses/text", { method: "POST", body: { content: content?.trim?.() ?? content }, auth: true });
   }
 
-  async createMediaStatus({
-    uri,
-    mimeType = "image/jpeg",
-    name = "status.jpg",
-    content = "",
-  }) {
+  async createMediaStatus({ uri, mimeType = "image/jpeg", name = "status.jpg", content = "" }) {
     const formData = new FormData();
     formData.append("media", { uri, type: mimeType, name });
     formData.append("content", content);
-    return this.request("/statuses/media", {
-      method: "POST",
-      body: formData,
-      isFormData: true,
-      auth: true,
-    });
+    return this.request("/statuses/media", { method: "POST", body: formData, isFormData: true, auth: true });
   }
 
   async markStatusAsViewed(statusId) {
-    return this.request(`/statuses/${statusId}/view`, {
-      method: "POST",
-      auth: true,
-    });
+    return this.request(`/statuses/${statusId}/view`, { method: "POST", auth: true });
   }
 
   async getStatusViewers(statusId) {
@@ -447,10 +359,7 @@ class ApiService {
   }
 
   async deleteStatus(statusId) {
-    return this.request(`/statuses/${statusId}`, {
-      method: "DELETE",
-      auth: true,
-    });
+    return this.request(`/statuses/${statusId}`, { method: "DELETE", auth: true });
   }
 
   async getUnseenStatusCount() {

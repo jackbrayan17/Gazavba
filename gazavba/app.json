@@ -29,11 +29,26 @@
       },
       "package": "com.jackbrayan1707.gazavba",
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "VIBRATE",
-        "INTERNET",
-        "READ_MEDIA_IMAGES","READ_MEDIA_VIDEO","READ_MEDIA_AUDIO","READ_EXTERNAL_STORAGE"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.VIBRATE",
+        "android.permission.INTERNET",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.VIBRATE",
+        "android.permission.INTERNET",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -68,7 +83,7 @@
       "expo-media-library"
     ],
     "updates": {
-      "url": "https://u.expo.dev/",
+      "url": "https://u.expo.dev/93ce8e6c-4de5-499c-90ac-bb6686b4090b",
       "fallbackToCacheTimeout": 0
     },
     "experiments": {
@@ -76,9 +91,14 @@
       "reactCompiler": true
     },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "YOUR_PROJECT_ID"
+        "projectId": "93ce8e6c-4de5-499c-90ac-bb6686b4090b"
       }
+    },
+    "owner": "jackbrayan1707",
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
