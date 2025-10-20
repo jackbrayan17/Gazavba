@@ -3,8 +3,8 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+const path = require('path'); // Added path module
+const fs = require('fs'); // Added fs module
 const { initDatabase } = require('./config/database');
 require('dotenv').config();
 
@@ -12,12 +12,14 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
 });
 
 const PORT = process.env.PORT || 3000;
+
+// Resolve upload directory
 const resolveUploadDir = (value) => {
   if (!value) {
     return path.resolve(process.cwd(), 'uploads');
@@ -25,10 +27,11 @@ const resolveUploadDir = (value) => {
   return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
 };
 
+// Ensure upload directory exists
 const uploadDir = resolveUploadDir(process.env.UPLOAD_PATH);
-
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+  console.log(`Created upload directory at: ${uploadDir}`);
 }
 
 // Middleware
@@ -49,6 +52,10 @@ io.on('connection', (socket) => {
 
   // Join user to their room
   socket.on('join', (userId) => {
+    if (!userId) {
+      console.error('No userId provided for join event');
+      return;
+    }
     socket.join(`user_${userId}`);
     console.log(`User ${userId} joined their room`);
   });
@@ -56,7 +63,10 @@ io.on('connection', (socket) => {
   // Handle new message
   socket.on('send_message', async (data) => {
     try {
-      const { chatId, senderId, text, messageType = 'text', mediaUrl = null, clientId = null } = data;
+      const { chatId, senderId, text, messageType = 'text' } = data;
+      if (!chatId || !senderId || !text) {
+        throw new Error('Missing required message fields');
+      }
 
       // Save message to database
       const MessageModel = require('./models/Message');
@@ -66,8 +76,7 @@ io.on('connection', (socket) => {
         senderId,
         text,
         messageType,
-        mediaUrl,
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       const sender = await UserModel.getById(senderId);
@@ -75,55 +84,68 @@ io.on('connection', (socket) => {
         ...messageRecord,
         senderName: sender?.name || 'Unknown',
         senderAvatar: sender?.avatar || null,
-        clientId,
       };
 
       // Get chat participants
       const ChatModel = require('./models/Chat');
       const chat = await ChatModel.getById(chatId);
+      if (!chat) {
+        throw new Error('Chat not found');
+      }
       const participants = await ChatModel.getParticipants(chatId);
 
       // Emit to all participants except sender
-      participants.forEach(participant => {
+      participants.forEach((participant) => {
         if (participant.userId !== senderId) {
           io.to(`user_${participant.userId}`).emit('new_message', {
             message,
             chatId,
             senderId,
             chatName: chat.name,
-            clientId,
           });
         }
       });
 
       // Emit back to sender for confirmation
-      socket.emit('message_sent', { ...message, chatId });
+      socket.emit('message_sent', message);
     } catch (error) {
-      console.error('Error sending message:', error);
-      socket.emit('message_error', { error: 'Failed to send message', clientId });
+      console.error('Error sending message:', error.message);
+      socket.emit('message_error', { error: 'Failed to send message' });
     }
   });
 
   // Handle typing indicators
   socket.on('typing_start', (data) => {
+    if (!data?.chatId || !data?.userId) {
+      console.error('Invalid typing_start data');
+      return;
+    }
     socket.to(`chat_${data.chatId}`).emit('user_typing', {
       userId: data.userId,
-      isTyping: true
+      isTyping: true,
     });
   });
 
   socket.on('typing_stop', (data) => {
+    if (!data?.chatId || !data?.userId) {
+      console.error('Invalid typing_stop data');
+      return;
+    }
     socket.to(`chat_${data.chatId}`).emit('user_typing', {
       userId: data.userId,
-      isTyping: false
+      isTyping: false,
     });
   });
 
   // Handle online status
   socket.on('user_online', (userId) => {
+    if (!userId) {
+      console.error('No userId provided for user_online event');
+      return;
+    }
     socket.broadcast.emit('user_status', {
       userId,
-      isOnline: true
+      isOnline: true,
     });
   });
 
@@ -137,6 +159,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
 });
 
+// Start server
 initDatabase()
   .then(() => {
     server.listen(PORT, '0.0.0.0', () => {
@@ -146,6 +169,6 @@ initDatabase()
     });
   })
   .catch((error) => {
-    console.error('Failed to initialize database', error);
+    console.error('Failed to initialize database:', error.message);
     process.exit(1);
   });
