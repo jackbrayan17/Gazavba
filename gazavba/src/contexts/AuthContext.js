@@ -53,6 +53,12 @@ export function AuthProvider({ children }) {
       try {
         console.log(`${LOG_TAG} bootstrapping session`);
         await ApiService.init(); // charge le token persistant
+        try {
+          const pingResult = await ApiService.ping();
+          console.log(`${LOG_TAG} backend reachable`, sanitizeForLog(pingResult));
+        } catch (pingError) {
+          console.error(`${LOG_TAG} backend ping failed`, pingError?.message || pingError);
+        }
         if (ApiService.token) {
           setToken(ApiService.token);
           console.log(`${LOG_TAG} verifying persisted token`);
