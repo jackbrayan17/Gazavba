@@ -1,0 +1,25 @@
+# build artifacts
+android/app/build/
+android/.cxx/
+android/.gradle/
+ios/build/
+ios/Pods/
+
+# caches & junk
+.expo/
+.expo-shared/
+dist/
+build/
+tmp/
+.npm/
+.yarn/
+.gradle/
+.cxx/
+
+# IDE / VCS
+.idea/
+.vscode/
+.git/
+
+# node modules (usually ignored automatically, keep it just in case)
+node_modules/

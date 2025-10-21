@@ -48,8 +48,8 @@ async function testHealth() {
 }
 
 async function testLogin() {
-  const phone = process.env.GAZAVBA_TEST_PHONE;
-  const password = process.env.GAZAVBA_TEST_PASSWORD;
+  const phone = 699999999;
+  const password = 'brayan8003';
   if (!phone || !password) {
     console.log('↷ Skipping login test (set GAZAVBA_TEST_PHONE & GAZAVBA_TEST_PASSWORD to enable)');
     return null;

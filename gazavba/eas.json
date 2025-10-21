@@ -16,6 +16,15 @@
     },
     "production": {
       "autoIncrement": true
+    },
+    "apk": {
+      "extends": "production",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "NODE_OPTIONS": "--max_old_space_size=4096"
+      }
     }
   },
   "submit": {
