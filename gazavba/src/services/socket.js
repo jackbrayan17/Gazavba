@@ -60,7 +60,7 @@ class SocketService {
     this.socket?.on('message_error', callback);
   }
 
-  sendMessage(chatId, senderId, text, messageType = 'text', clientId) {
+  sendMessage(chatId, senderId, text, messageType = 'text', clientId, mediaUrl = null, mediaName = null) {
     if (this.socket && this.isConnected) {
       this.socket.emit('send_message', {
         chatId,
@@ -68,6 +68,8 @@ class SocketService {
         text,
         messageType,
         clientId,
+        mediaUrl,
+        mediaName,
       });
     }
   }

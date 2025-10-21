@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   Text,
@@ -20,6 +21,7 @@ import { ThemeCtx } from "../_layout";
 import { useThemeController } from "../../src/contexts/ThemeContext";
 import { resolveAssetUri } from "../../src/utils/resolveAssetUri";
 import useMatchedContacts from "../../src/hooks/useMatchedContacts";
+import NotificationService from "../../src/services/notificationService";
 
 export type ChatListEntry = {
   id: string;
@@ -31,6 +33,8 @@ export type ChatListEntry = {
   type?: string;
   participants?: any[];
   otherParticipant?: any | null;
+  isMuted?: boolean;
+  muteUntil?: string | null;
 };
 
 const FALLBACK_AVATAR = "https://ui-avatars.com/api/?name=Gazavba&background=0C3B2E&color=fff";
@@ -95,7 +99,11 @@ export default function ChatListScreen() {
       setError(null);
       setIsLoading(true);
       const response = await ApiService.getChats();
-      setChats(Array.isArray(response) ? response : []);
+      const list = Array.isArray(response) ? response : [];
+      setChats(list);
+      NotificationService.syncMuted(list);
+      const totalUnread = list.reduce((sum, chat) => sum + (Number(chat.unreadCount) || 0), 0);
+      NotificationService.setAppBadge(totalUnread);
       await loadStatuses();
     } catch (err: any) {
       const message = err?.message || "Unable to load conversations";
@@ -139,14 +147,17 @@ export default function ChatListScreen() {
           const timeB = new Date(b.lastMessageTime || 0).getTime();
           return timeB - timeA;
         });
+        NotificationService.syncMuted(next);
+        const totalUnread = next.reduce((sum, chat) => sum + (Number(chat.unreadCount) || 0), 0);
+        NotificationService.setAppBadge(totalUnread);
         return next;
       });
     };
 
     const handleSent = (message: any) => {
       if (!message?.chatId) return;
-      setChats((prev) =>
-        prev.map((item) =>
+      setChats((prev) => {
+        const mapped = prev.map((item) =>
           item.id === message.chatId
             ? {
                 ...item,
@@ -154,8 +165,10 @@ export default function ChatListScreen() {
                 lastMessageTime: message.timestamp ? new Date(message.timestamp).toISOString() : new Date().toISOString(),
               }
             : item
-        )
-      );
+        );
+        NotificationService.syncMuted(mapped);
+        return mapped;
+      });
     };
 
     SocketService.on("new_message", handleIncoming);
@@ -213,9 +226,11 @@ export default function ChatListScreen() {
     const otherId = item.otherParticipant?.id || item.otherParticipant?.userId;
     const statusInfo = otherId ? statusMeta[otherId] : undefined;
     const showStatusRing = !!statusInfo?.unseen;
+    const isMuted = !!item.isMuted || (!!item.muteUntil && new Date(item.muteUntil).getTime() > Date.now());
     return (
       <TouchableOpacity
         onPress={() => openChat(item)}
+        onLongPress={() => handleChatLongPress(item)}
         activeOpacity={0.85}
         style={[styles.card, { backgroundColor: theme.card, borderColor: theme.hairline }]}
       >
@@ -261,15 +276,64 @@ export default function ChatListScreen() {
             <Text style={[styles.preview, { color: theme.subtext }]} numberOfLines={1}>
               {item.lastMessage || "Tap to start chatting"}
             </Text>
-            {item.unreadCount ? (
-              <View style={[styles.badge, { backgroundColor: theme.mint }]}>
-                <Text style={styles.badgeText}>{item.unreadCount}</Text>
-              </View>
-            ) : null}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {isMuted && <Ionicons name="notifications-off" size={16} color={theme.subtext} />}
+              {item.unreadCount ? (
+                <View style={[styles.badge, { backgroundColor: theme.mint }]}>
+                  <Text style={styles.badgeText}>{item.unreadCount}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
       </TouchableOpacity>
     );
+  };
+
+  const updateMuteState = async (chatId: string, muted: boolean, durationMinutes?: number | null) => {
+    try {
+      if (muted) {
+        await ApiService.muteChat(chatId, durationMinutes ?? null);
+      } else {
+        await ApiService.unmuteChat(chatId);
+      }
+      setChats((prev) =>
+        prev.map((item) =>
+          item.id === chatId
+            ? {
+                ...item,
+                isMuted: muted,
+                muteUntil:
+                  muted && durationMinutes
+                    ? new Date(Date.now() + durationMinutes * 60 * 1000).toISOString()
+                    : null,
+              }
+            : item
+        )
+      );
+      NotificationService.setMuted(chatId, muted);
+    } catch (error: any) {
+      Alert.alert("Mute failed", error?.message || "Could not update mute settings.");
+    }
+  };
+
+  const handleChatLongPress = (chat: ChatListEntry) => {
+    const isMuted = !!chat.isMuted || (!!chat.muteUntil && new Date(chat.muteUntil).getTime() > Date.now());
+    const actions: Array<{ text: string; onPress: () => void; style?: "cancel" }> = [];
+
+    if (isMuted) {
+      actions.push({ text: "Unmute", onPress: () => updateMuteState(chat.id, false) });
+    } else {
+      actions.push(
+        { text: "Mute for 1 hour", onPress: () => updateMuteState(chat.id, true, 60) },
+        { text: "Mute for 8 hours", onPress: () => updateMuteState(chat.id, true, 480) },
+        { text: "Mute indefinitely", onPress: () => updateMuteState(chat.id, true, null) }
+      );
+    }
+
+    actions.push({ text: "Cancel", onPress: () => {}, style: "cancel" });
+
+    Alert.alert(chat.displayName, isMuted ? "Notifications muted" : "Mute notifications?", actions);
   };
 
   if (!initialized || isLoading) {

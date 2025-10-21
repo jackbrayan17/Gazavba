@@ -301,6 +301,21 @@ class ApiService {
     return this.request("/chats", { auth: true });
   }
 
+  async muteChat(chatId, durationMinutes = null) {
+    return this.request(`/chats/${chatId}/mute`, {
+      method: "POST",
+      body: durationMinutes ? { durationMinutes } : {},
+      auth: true,
+    });
+  }
+
+  async unmuteChat(chatId) {
+    return this.request(`/chats/${chatId}/unmute`, {
+      method: "POST",
+      auth: true,
+    });
+  }
+
   async createChat(chatData) {
     return this.request("/chats", {
       method: "POST",
@@ -332,6 +347,21 @@ class ApiService {
     return this.request("/messages", {
       method: "POST",
       body: messageData,
+      auth: true,
+    });
+  }
+
+  async uploadMessageAttachment({ uri, mimeType = "application/octet-stream", name = "attachment" }) {
+    const formData = new FormData();
+    formData.append("file", {
+      uri,
+      type: mimeType,
+      name,
+    });
+    return this.request("/messages/upload", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
       auth: true,
     });
   }

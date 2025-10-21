@@ -1,8 +1,47 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const Message = require('../models/Message');
 const { JWT_SECRET } = require('../config/auth');
 const router = express.Router();
+
+const resolveUploadDir = (value) => {
+  if (!value) {
+    return path.resolve(__dirname, '..', 'uploads');
+  }
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
+};
+
+const uploadDir = resolveUploadDir(process.env.UPLOAD_PATH);
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const ext = path.extname(file.originalname || '') || '.bin';
+    cb(null, `${unique}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+const buildFileUrl = (req, filename) => {
+  if (!filename) return null;
+  if (process.env.CDN_BASE_URL) {
+    return `${process.env.CDN_BASE_URL.replace(/\/+$/, '')}/uploads/${filename}`;
+  }
+  const host = req.get('host');
+  return `${req.protocol}://${host}/uploads/${filename}`;
+};
 
 // Middleware to verify JWT
 const authenticateToken = (req, res, next) => {
@@ -35,8 +74,8 @@ router.get('/chat/:chatId', authenticateToken, async (req, res) => {
 // Send message
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { chatId, text, messageType = 'text', mediaUrl } = req.body;
-    
+    const { chatId, text, messageType = 'text', mediaUrl, mediaName } = req.body;
+
     if (!chatId || !text) {
       return res.status(400).json({ error: 'Chat ID and text required' });
     }
@@ -46,13 +85,34 @@ router.post('/', authenticateToken, async (req, res) => {
       senderId: req.userId,
       text,
       messageType,
-      mediaUrl
+      mediaUrl,
+      mediaName: mediaName || null,
     });
 
     res.status(201).json(message);
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fileUrl = buildFileUrl(req, req.file.filename);
+    res.json({
+      url: fileUrl,
+      path: `/uploads/${req.file.filename}`,
+      filename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+    });
+  } catch (error) {
+    console.error('Upload attachment error:', error);
+    res.status(500).json({ error: 'Failed to upload attachment' });
   }
 });
 
