@@ -5,6 +5,7 @@ import { ActivityIndicator, View } from "react-native";
 import { getTheme, Theme } from "../src/constants/theme";
 import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
 import { ThemeProvider, useThemeController } from "../src/contexts/ThemeContext";
+import { ChatSessionProvider } from "../src/contexts/ChatContext";
 
 export const ThemeCtx = createContext<Theme>(getTheme("light"));
 
@@ -66,9 +67,11 @@ export default function RootLayout() {
     <ThemeProvider>
       <AuthProvider>
         <ThemeBridge>
-          <AuthGate>
-            <ThemedStack />
-          </AuthGate>
+          <ChatSessionProvider>
+            <AuthGate>
+              <ThemedStack />
+            </AuthGate>
+          </ChatSessionProvider>
         </ThemeBridge>
       </AuthProvider>
     </ThemeProvider>
