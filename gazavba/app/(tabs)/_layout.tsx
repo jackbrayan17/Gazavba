@@ -1,11 +1,44 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useContext } from "react";
 import { ThemeCtx } from "../_layout";
 import AppHeader from "../components/AppHeader";
+import useSocketNotifications from "../../src/hooks/useSocketNotifications";
+import NotificationService from "../../src/services/notificationService";
+import ApiService from "../../src/services/api";
+import { useAuth } from "../../src/contexts/AuthContext";
 
 export default function TabsLayout() {
   const t = useContext(ThemeCtx);
+  const { token } = useAuth();
+
+  useSocketNotifications();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      let mounted = true;
+      const syncBadge = async () => {
+        try {
+          if (!token) return;
+          const chats = await ApiService.getChats();
+          if (!mounted) return;
+          const total = Array.isArray(chats)
+            ? chats.reduce((sum, chat) => sum + (Number(chat.unreadCount) || 0), 0)
+            : 0;
+          NotificationService.setAppBadge(total);
+          NotificationService.syncMuted(Array.isArray(chats) ? chats : []);
+        } catch (error) {
+          console.error("Failed to sync badge", error);
+        }
+      };
+
+      syncBadge();
+      return () => {
+        mounted = false;
+      };
+    }, [token])
+  );
 
   return (
      <Tabs
