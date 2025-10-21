@@ -43,6 +43,8 @@ router.get('/', authenticateToken, async (req, res) => {
           displayName,
           avatar,
           otherParticipant: primary || null,
+          isMuted: !!chat.isMuted,
+          muteUntil: chat.muteUntil || null,
         };
       })
     );
@@ -96,6 +98,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const participants = await Chat.getParticipants(req.params.id);
     const others = participants.filter((participant) => participant.userId !== req.userId && participant.id !== req.userId);
     const primary = chat.type === 'direct' ? others[0] : null;
+    const preferences = await Chat.getParticipantSettings(req.params.id, req.userId);
 
     const displayName =
       chat.type === 'group'
@@ -109,11 +112,41 @@ router.get('/:id', authenticateToken, async (req, res) => {
       participants,
       displayName,
       avatar,
+      isMuted: !!preferences?.isMuted,
+      muteUntil: preferences?.muteUntil || null,
       otherParticipant: primary || null,
     });
   } catch (error) {
     console.error('Get chat error:', error);
     res.status(500).json({ error: 'Failed to fetch chat' });
+  }
+});
+
+router.post('/:id/mute', authenticateToken, async (req, res) => {
+  try {
+    const { durationMinutes = null } = req.body || {};
+    let muteUntil = null;
+    if (durationMinutes !== null && durationMinutes !== undefined) {
+      const minutes = Number(durationMinutes);
+      if (!Number.isNaN(minutes) && minutes > 0) {
+        muteUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+      }
+    }
+    const settings = await Chat.setMute(req.params.id, req.userId, { muteUntil, isMuted: true });
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('Mute chat error:', error);
+    res.status(500).json({ error: 'Failed to mute chat' });
+  }
+});
+
+router.post('/:id/unmute', authenticateToken, async (req, res) => {
+  try {
+    const settings = await Chat.setMute(req.params.id, req.userId, { muteUntil: null, isMuted: false });
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('Unmute chat error:', error);
+    res.status(500).json({ error: 'Failed to unmute chat' });
   }
 });
 

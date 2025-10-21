@@ -56,7 +56,15 @@ io.on('connection', (socket) => {
   // Handle new message
   socket.on('send_message', async (data) => {
     try {
-      const { chatId, senderId, text, messageType = 'text', mediaUrl = null, clientId = null } = data;
+      const {
+        chatId,
+        senderId,
+        text,
+        messageType = 'text',
+        mediaUrl = null,
+        mediaName = null,
+        clientId = null,
+      } = data;
 
       // Save message to database
       const MessageModel = require('./models/Message');
@@ -67,6 +75,7 @@ io.on('connection', (socket) => {
         text,
         messageType,
         mediaUrl,
+        mediaName,
         timestamp: new Date()
       });
 
@@ -76,6 +85,7 @@ io.on('connection', (socket) => {
         senderName: sender?.name || 'Unknown',
         senderAvatar: sender?.avatar || null,
         clientId,
+        mediaName,
       };
 
       // Get chat participants
