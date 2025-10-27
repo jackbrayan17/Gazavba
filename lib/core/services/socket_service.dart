@@ -10,15 +10,31 @@ final socketServiceProvider = Provider<SocketService>((ref) {
   throw UnimplementedError('SocketService must be provided before use');
 });
 
+enum SocketEventType {
+  connected,
+  disconnected,
+  newMessage,
+  messageSent,
+  messageError,
+  userOnline,
+}
+
+class SocketEvent {
+  const SocketEvent(this.type, this.data);
+
+  final SocketEventType type;
+  final dynamic data;
+}
+
 class SocketService {
   SocketService({required ApiClient apiClient}) : _apiClient = apiClient;
 
   final ApiClient _apiClient;
   final Logger _logger = Logger('SocketService');
   io.Socket? _socket;
-  final _messageController = StreamController<Map<String, dynamic>>.broadcast();
+  final _eventController = StreamController<SocketEvent>.broadcast();
 
-  Stream<Map<String, dynamic>> get messages => _messageController.stream;
+  Stream<SocketEvent> get events => _eventController.stream;
 
   Future<void> connect({String? token}) async {
     await disconnect();
@@ -34,16 +50,34 @@ class SocketService {
         })
         .build();
 
-    _socket = io.io(uri, opts);
-    _socket!.onConnect((_) => _logger.info('Socket connected'));
-    _socket!.onDisconnect((_) => _logger.warning('Socket disconnected'));
-    _socket!.onError((err) => _logger.severe('Socket error', err));
-    _socket!.on('message', (data) {
-      if (data is Map<String, dynamic>) {
-        _messageController.add(data);
-      }
+    final socket = io.io(uri, opts);
+    _socket = socket;
+    socket.onConnect((_) {
+      _logger.info('Socket connected');
+      _eventController.add(const SocketEvent(SocketEventType.connected, null));
     });
-    _socket!.connect();
+    socket.onDisconnect((_) {
+      _logger.warning('Socket disconnected');
+      _eventController.add(const SocketEvent(SocketEventType.disconnected, null));
+    });
+    socket.onError((err) {
+      _logger.severe('Socket error', err);
+      _eventController.add(SocketEvent(SocketEventType.messageError, err));
+    });
+    socket.on('new_message', (data) {
+      _logger.fine('Received new_message event');
+      _eventController.add(SocketEvent(SocketEventType.newMessage, data));
+    });
+    socket.on('message_sent', (data) {
+      _eventController.add(SocketEvent(SocketEventType.messageSent, data));
+    });
+    socket.on('message_error', (data) {
+      _eventController.add(SocketEvent(SocketEventType.messageError, data));
+    });
+    socket.on('user_online', (data) {
+      _eventController.add(SocketEvent(SocketEventType.userOnline, data));
+    });
+    socket.connect();
   }
 
   Future<void> disconnect() async {
@@ -54,12 +88,24 @@ class SocketService {
     }
   }
 
+  void joinUser(String userId) {
+    if (_socket == null) {
+      _logger.warning('Cannot join room before socket is connected');
+      return;
+    }
+    _logger.info('Joining personal room for user $userId');
+    _socket!
+      ..emit('join', {'userId': userId})
+      ..emit('user_online', {'userId': userId});
+  }
+
   void emit(String event, dynamic data) {
+    _logger.fine('Emitting event $event with payload $data');
     _socket?.emit(event, data);
   }
 
   void dispose() {
     disconnect();
-    _messageController.close();
+    _eventController.close();
   }
 }

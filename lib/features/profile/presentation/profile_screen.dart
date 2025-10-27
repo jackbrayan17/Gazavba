@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../auth/controllers/auth_controller.dart';
+import '../../../core/services/log_service.dart';
+import '../../../core/theme/theme_controller.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -11,6 +13,8 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
+    final themeMode = ref.watch(themeControllerProvider);
+    final logService = ref.watch(logServiceProvider);
 
     if (user == null) {
       return Scaffold(
@@ -73,6 +77,13 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 32),
+          _AppearanceCard(
+            themeMode: themeMode,
+            onChanged: (mode) =>
+                ref.read(themeControllerProvider.notifier).setTheme(mode),
+            logFilePath: logService.logFilePath,
+          ),
+          const SizedBox(height: 16),
           _InfoTile(
             icon: Icons.lock_outline_rounded,
             title: 'Sécurité avancée',
@@ -102,6 +113,88 @@ class ProfileScreen extends ConsumerWidget {
             label: const Text('Se déconnecter'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AppearanceCard extends StatelessWidget {
+  const _AppearanceCard({
+    required this.themeMode,
+    required this.onChanged,
+    this.logFilePath,
+  });
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onChanged;
+  final String? logFilePath;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final selection = <ThemeMode>{themeMode};
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.palette_rounded, color: colors.primary),
+                const SizedBox(width: 12),
+                Text(
+                  'Apparence et suivi',
+                  style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  icon: Icon(Icons.brightness_auto_rounded),
+                  label: Text('Auto'),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  icon: Icon(Icons.wb_sunny_rounded),
+                  label: Text('Clair'),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  icon: Icon(Icons.nights_stay_rounded),
+                  label: Text('Sombre'),
+                ),
+              ],
+              selected: selection,
+              showSelectedIcon: false,
+              onSelectionChanged: (selected) {
+                if (selected.isEmpty) {
+                  return;
+                }
+                onChanged(selected.first);
+              },
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Journal en temps réel',
+              style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              logFilePath != null
+                  ? 'Chaque action est enregistrée dans le fichier:\n$logFilePath'
+                  : 'Le suivi s’affiche dans la console de développement.',
+              style: textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/services/api_client.dart';
+import 'core/services/log_service.dart';
 import 'core/services/socket_service.dart';
 import 'core/storage/secure_storage.dart';
 import 'core/utils/provider_logger.dart';
@@ -11,6 +12,9 @@ import 'core/utils/provider_logger.dart';
 Future<void> main() async {
   // Ensures Flutter engine + plugins are initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Configure application logging before anything else
+  final logService = await LogService.create();
 
   // Initialize secure storage
   final storage = await AppSecureStorage.create();
@@ -29,6 +33,7 @@ Future<void> main() async {
         AppProviderObserver(), // Logs provider changes (for debugging)
       ],
       overrides: [
+        logServiceProvider.overrideWithValue(logService),
         secureStorageProvider.overrideWithValue(storage),
         apiClientProvider.overrideWithValue(apiClient),
         socketServiceProvider.overrideWithValue(socketService),

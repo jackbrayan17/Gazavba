@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 import '../../../core/models/user.dart';
 import '../../../core/services/api_client.dart';
@@ -49,11 +50,13 @@ class AuthState {
 
 class AuthController extends StateNotifier<AuthState> {
   AuthController({required this.repository, required this.apiClient})
-      : super(const AuthState());
+      : _logger = Logger('AuthController'),
+        super(const AuthState());
 
   final AuthRepository repository;
   final ApiClient apiClient;
   Timer? _statusTimer;
+  final Logger _logger;
 
   Future<void> initialise() async {
     final token = await apiClient.currentToken();
@@ -65,9 +68,12 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       final user = await repository.refreshProfile();
       state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
+      _startPresenceLoop();
+      _logger.info('Session restaurée pour ${user.id}');
     } catch (error) {
       await apiClient.clearToken();
       state = state.copyWith(isLoading: false, error: error.toString(), user: null, bootstrapComplete: true);
+      _logger.warning('Impossible de restaurer la session: $error');
     }
   }
 
@@ -77,9 +83,11 @@ class AuthController extends StateNotifier<AuthState> {
       final user = await repository.login(phone: phone, password: password);
       state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();
+      _logger.info('Utilisateur connecté ${user.id}');
       return Success(user);
     } on ApiException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
+      _logger.warning('Échec de connexion: ${error.message}');
       return Failure(error);
     }
   }
@@ -102,9 +110,11 @@ class AuthController extends StateNotifier<AuthState> {
       );
       state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();
+      _logger.info('Nouveau compte créé ${user.id}');
       return Success(user);
     } on ApiException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
+      _logger.warning('Échec d\'inscription: ${error.message}');
       return Failure(error);
     }
   }
@@ -124,6 +134,7 @@ class AuthController extends StateNotifier<AuthState> {
     await apiClient.clearToken();
     state = const AuthState(bootstrapComplete: true);
     _statusTimer?.cancel();
+    _logger.info('Utilisateur déconnecté');
   }
 
   void _startPresenceLoop() {
@@ -131,6 +142,7 @@ class AuthController extends StateNotifier<AuthState> {
     _statusTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
       try {
         await apiClient.post('/users/online', data: {'isOnline': true});
+        _logger.fine('Présence synchronisée');
       } catch (_) {
         // ignore presence errors
       }

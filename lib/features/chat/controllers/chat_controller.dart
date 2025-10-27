@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 import '../../../core/models/chat.dart';
 import '../../../core/models/message.dart';
@@ -65,16 +66,21 @@ class ChatController extends StateNotifier<ChatState> {
 
   final ChatRepository repository;
   final SocketService socketService;
-  StreamSubscription<Map<String, dynamic>>? _socketSubscription;
+  StreamSubscription<SocketEvent>? _socketSubscription;
+  final Logger _logger = Logger('ChatController');
+  String? _userId;
 
   Future<void> onAuthStateChanged(AuthState? previous, AuthState next) async {
     if (next.isAuthenticated) {
+      _userId = next.user?.id;
       await loadChats();
       await socketService.connect();
-      _socketSubscription ??= socketService.messages.listen(_handleSocketEvent);
+      _socketSubscription ??= socketService.events.listen(_handleSocketEvent);
     } else {
+      _userId = null;
       _socketSubscription?.cancel();
       _socketSubscription = null;
+      await socketService.disconnect();
       state = const ChatState();
     }
   }
@@ -84,8 +90,10 @@ class ChatController extends StateNotifier<ChatState> {
     try {
       final chats = await repository.fetchChats();
       state = state.copyWith(chats: chats, isLoading: false);
+      _logger.info('Loaded ${chats.length} chats');
     } on ApiException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
+      _logger.warning('Failed to load chats: ${error.message}');
     }
   }
 
@@ -96,9 +104,12 @@ class ChatController extends StateNotifier<ChatState> {
       final map = Map<String, List<Message>>.from(state.messagesByChat);
       map[chatId] = messages;
       state = state.copyWith(messagesByChat: map, isLoading: false);
+      unawaited(repository.markChatAsRead(chatId));
+      _logger.info('Fetched ${messages.length} messages for chat $chatId');
       return Success(messages);
     } on ApiException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
+      _logger.warning('Failed to load messages for $chatId: ${error.message}');
       return Failure(error);
     }
   }
@@ -106,37 +117,62 @@ class ChatController extends StateNotifier<ChatState> {
   Future<Result<Message>> sendMessage(String chatId, String content) async {
     try {
       final message = await repository.sendMessage(chatId, content);
-      _upsertMessage(chatId, message.copyWith(isMine: true));
+      final mine = message.copyWith(isMine: true);
+      _upsertMessage(chatId, mine);
+      socketService.emit('send_message', {
+        'chatId': chatId,
+        'senderId': _userId,
+        'text': content,
+        'messageType': message.messageType,
+      });
+      _logger.fine('Message sent to chat $chatId');
       return Success(message);
     } on ApiException catch (error) {
+      _logger.warning('Failed to send message: ${error.message}');
       return Failure(error);
     }
   }
 
-  Future<void> muteChat(String chatId, {int? durationMinutes}) async {
-    try {
-      await repository.muteChat(chatId, durationMinutes: durationMinutes);
-      final updatedChats = state.chats
-          .map(
-            (chat) => chat.id == chatId
-                ? chat.copyWith(isMuted: true)
-                : chat,
-          )
-          .toList();
-      state = state.copyWith(chats: updatedChats);
-    } catch (_) {
-      // ignore
+  void _handleSocketEvent(SocketEvent event) {
+    switch (event.type) {
+      case SocketEventType.connected:
+        if (_userId != null) {
+          socketService.joinUser(_userId!);
+        }
+        break;
+      case SocketEventType.newMessage:
+        _handleIncomingMessage(event.data);
+        break;
+      case SocketEventType.messageSent:
+        _handleIncomingMessage(event.data);
+        break;
+      case SocketEventType.messageError:
+        _logger.warning('Socket message error: ${event.data}');
+        break;
+      default:
+        break;
     }
   }
 
-  void _handleSocketEvent(Map<String, dynamic> event) {
-    final type = event['type'] as String? ?? '';
-    if (type == 'message:new') {
-      final data = event['data'] as Map<String, dynamic>?;
-      if (data == null) return;
-      final message = Message.fromJson(data);
-      _upsertMessage(message.chatId, message);
+  void _handleIncomingMessage(dynamic data) {
+    if (data is! Map) return;
+    Map<String, dynamic>? messageJson;
+    String? chatId;
+    if (data['message'] is Map<String, dynamic>) {
+      messageJson = (data['message'] as Map).cast<String, dynamic>();
+      chatId = data['chatId']?.toString() ?? messageJson['chatId']?.toString();
+    } else if (data is Map<String, dynamic>) {
+      messageJson = data;
+      chatId = data['chatId']?.toString() ?? data['chat_id']?.toString();
     }
+    if (messageJson == null) return;
+    if (chatId != null && !messageJson.containsKey('chatId')) {
+      messageJson = Map<String, dynamic>.from(messageJson)..['chatId'] = chatId;
+    }
+    final message = Message.fromJson(messageJson!);
+    final resolvedChatId = chatId ?? message.chatId;
+    final mine = message.copyWith(isMine: message.senderId == _userId);
+    _upsertMessage(resolvedChatId, mine);
   }
 
   void _upsertMessage(String chatId, Message message) {
