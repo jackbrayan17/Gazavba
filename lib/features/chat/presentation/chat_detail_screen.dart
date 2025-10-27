@@ -163,7 +163,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
                   ElevatedButton(
                     onPressed: chatState.isLoading ? null : _send,
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(18),
                       shape: const CircleBorder(),
                     ),
                     child: const Icon(Icons.send_rounded),
@@ -212,41 +212,85 @@ class _MessageBubble extends StatelessWidget {
     final textColor = message.isMine ? colorScheme.onPrimary : colorScheme.onSurface;
     final time = DateFormat.Hm().format(message.createdAt);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(20),
-          topRight: const Radius.circular(20),
-          bottomLeft: message.isMine ? const Radius.circular(20) : const Radius.circular(4),
-          bottomRight: message.isMine ? const Radius.circular(4) : const Radius.circular(20),
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 200),
+      scale: 1,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: message.isMine ? const Radius.circular(20) : const Radius.circular(6),
+            bottomRight: message.isMine ? const Radius.circular(6) : const Radius.circular(20),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(message.isMine ? 0.12 : 0.06),
+              offset: const Offset(0, 4),
+              blurRadius: 8,
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            offset: const Offset(0, 4),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment:
-            message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Text(
-            message.content,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: textColor),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            time,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: textColor.withOpacity(0.7),
+        child: Column(
+          crossAxisAlignment:
+              message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            if (!message.isMine && (message.senderName?.isNotEmpty ?? false)) ...[
+              Text(
+                message.senderName!,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: textColor.withOpacity(0.7),
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const SizedBox(height: 4),
+            ],
+            if (message.mediaUrl != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: AspectRatio(
+                  aspectRatio: 3 / 4,
+                  child: Image.network(
+                    message.mediaUrl!,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-          ),
-        ],
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (message.content.trim().isNotEmpty)
+              Text(
+                message.content,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: textColor),
+              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment:
+                  message.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+              children: [
+                Text(
+                  time,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: textColor.withOpacity(0.7),
+                      ),
+                ),
+                if (message.isMine) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    message.readAt != null
+                        ? Icons.done_all_rounded
+                        : Icons.done_rounded,
+                    size: 16,
+                    color: textColor.withOpacity(message.readAt != null ? 1 : 0.7),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,7 @@ class AppSecureStorage {
   final SharedPreferences _prefs;
 
   static const _tokenKey = 'access_token';
+  static const _themeModeKey = 'theme_mode';
 
   static Future<AppSecureStorage> create() async {
     FlutterSecureStorage? secure;
@@ -38,6 +40,19 @@ class AppSecureStorage {
   Future<String?> readToken() => _read(_tokenKey);
 
   Future<void> deleteToken() => _delete(_tokenKey);
+
+  Future<void> writeThemeMode(ThemeMode mode) async {
+    await _prefs.setString(_themeModeKey, mode.name);
+  }
+
+  Future<ThemeMode?> readThemeMode() async {
+    final value = _prefs.getString(_themeModeKey);
+    if (value == null) return null;
+    return ThemeMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => ThemeMode.system,
+    );
+  }
 
   Future<void> _write(String key, String value) async {
     if (_secureStorage != null) {

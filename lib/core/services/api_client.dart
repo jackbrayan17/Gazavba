@@ -165,6 +165,7 @@ class ApiClient {
 
     final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
     try {
+      _logger.fine('[$method] $normalizedPath → params=${jsonEncode(query ?? {})}');
       final response = await _dio.request<Map<String, dynamic>>(
         normalizedPath,
         data: formData ?? data,

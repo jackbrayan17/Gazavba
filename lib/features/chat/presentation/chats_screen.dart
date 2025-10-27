@@ -129,11 +129,8 @@ class _ChatListTile extends ConsumerWidget {
 
     return InkWell(
       onTap: () => context.go(
-        Uri(
-          path: '/home/chats/conversation/${chat.id}',
-          queryParameters: {'title': chat.title},
-        ).toString(),
-        extra: chat,
+        '/home/chats/conversation/${chat.id}',
+        extra: {'title': chat.title, 'chat': chat},
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -209,8 +206,23 @@ class _ChatListTile extends ConsumerWidget {
   }
 
   String _formatMessage(Message message) {
+    if (message.messageType != 'text' && message.mediaUrl != null) {
+      switch (message.messageType) {
+        case 'image':
+          return '📷 Photo';
+        case 'video':
+          return '🎬 Vidéo';
+        case 'audio':
+          return '🎧 Audio';
+        case 'file':
+          return '📎 Fichier partagé';
+      }
+      return '📎 ${message.messageType}';
+    }
     final preview = message.content.trim();
-    if (preview.isEmpty) return 'Pièce jointe';
+    if (preview.isEmpty) {
+      return 'Message';
+    }
     return preview;
   }
 }
