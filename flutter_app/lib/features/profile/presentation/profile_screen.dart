@@ -46,18 +46,25 @@ class ProfileScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Center(
-            child: CircleAvatar(
-              radius: 48,
-              backgroundImage: user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
-              child: user.avatarUrl == null
-                  ? Text(
-                      user.name.isNotEmpty ? user.name.characters.first.toUpperCase() : '?',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    )
-                  : null,
-            ),
-          ),
+          Builder(builder: (context) {
+            final avatarImage = user.avatarBytes != null
+                ? MemoryImage(user.avatarBytes!)
+                : user.avatarUrl != null
+                    ? NetworkImage(user.avatarUrl!)
+                    : null;
+            return Center(
+              child: CircleAvatar(
+                radius: 48,
+                backgroundImage: avatarImage,
+                child: avatarImage == null
+                    ? Text(
+                        user.name.isNotEmpty ? user.name.characters.first.toUpperCase() : '?',
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      )
+                    : null,
+              ),
+            );
+          }),
           const SizedBox(height: 16),
           Center(
             child: Text(

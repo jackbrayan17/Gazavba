@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:collection/collection.dart';
 
 import 'message.dart';
@@ -40,6 +42,8 @@ class Chat {
   final bool isMuted;
 
   String? get avatarUrl => participants.firstWhereOrNull((p) => p.avatarUrl != null)?.avatarUrl;
+  Uint8List? get avatarBytes =>
+      participants.firstWhereOrNull((p) => p.avatarBytes != null)?.avatarBytes;
 
   Chat copyWith({
     String? id,

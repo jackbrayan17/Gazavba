@@ -1,12 +1,14 @@
-import 'dart:async';
-import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
 
+import '../database/app_database.dart';
 import '../storage/secure_storage.dart';
 import '../utils/exceptions.dart';
+
+final databaseProvider = Provider<AppDatabase>((ref) {
+  throw UnimplementedError('Database must be initialised before use');
+});
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   throw UnimplementedError('ApiClient must be provided before use');
@@ -17,86 +19,40 @@ final socketBaseUrlProvider = Provider<String>((ref) {
 });
 
 class ApiClient {
-  ApiClient({required AppSecureStorage storage}) : _storage = storage {
-    final baseUrlEnv = const String.fromEnvironment('GAZAVBA_API_URL');
-    final socketUrlEnv = const String.fromEnvironment('GAZAVBA_SOCKET_URL');
-
-    _baseUrl = baseUrlEnv.isNotEmpty ? baseUrlEnv : _defaultBaseUrl;
-    _socketBaseUrl = socketUrlEnv.isNotEmpty ? socketUrlEnv : _defaultSocketUrl;
-
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: _baseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 20),
-        sendTimeout: const Duration(seconds: 20),
-        headers: const {
-          'Accept': 'application/json',
-        },
-      ),
-    );
-
-    _dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) {
-          if (_token != null && options.extra['auth'] != false) {
-            options.headers['Authorization'] = 'Bearer $_token';
-          }
-          return handler.next(options);
-        },
-        onError: (error, handler) {
-          final response = error.response;
-          final status = response?.statusCode;
-          final message = response?.data is Map
-              ? (response!.data['message'] as String?)
-              : response?.statusMessage;
-          if (status == 401) {
-            _token = null;
-          }
-          handler.next(
-            DioException(
-              requestOptions: error.requestOptions,
-              response: response,
-              type: error.type,
-              message: message ?? error.message,
-              error: error.error,
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  static const _defaultBaseUrl = 'https://gazavba.eeuez.com/api';
-  static const _defaultSocketUrl = 'https://gazavba.eeuez.com';
+  ApiClient({required AppSecureStorage storage, required AppDatabase database})
+      : _storage = storage,
+        _database = database;
 
   final AppSecureStorage _storage;
-  late final Dio _dio;
+  final AppDatabase _database;
 
-  late final String _baseUrl;
-  late final String _socketBaseUrl;
   String? _token;
 
-  String get socketBaseUrl => _socketBaseUrl;
-  String get baseUrl => _baseUrl;
-
-  final Logger _logger = Logger('ApiClient');
+  String get socketBaseUrl => 'local';
+  String get baseUrl => 'local';
 
   Future<void> init() async {
+    await _database.init();
     _token = await _storage.readToken();
-    _logger.info('Initialised api client (hasToken=${_token != null}) -> $_baseUrl');
   }
 
   Future<void> setToken(String? token) async {
+    if (token == null) {
+      await clearToken();
+      return;
+    }
     _token = token;
     await _storage.writeToken(token);
   }
 
   Future<void> clearToken() async {
+    final current = _token;
     _token = null;
     await _storage.deleteToken();
+    if (current != null) {
+      await _database.logout(current);
+    }
   }
-
 
   Future<String?> currentToken() async {
     if (_token != null) {
@@ -105,35 +61,30 @@ class ApiClient {
     _token = await _storage.readToken();
     return _token;
   }
+
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
     bool auth = true,
-    CancelToken? cancelToken,
   }) {
     return request(
       path,
       method: 'GET',
-      query: query,
+      data: query,
       auth: auth,
-      cancelToken: cancelToken,
     );
   }
 
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? data,
-    FormData? formData,
     bool auth = true,
-    CancelToken? cancelToken,
   }) {
     return request(
       path,
       method: 'POST',
       data: data,
-      formData: formData,
       auth: auth,
-      cancelToken: cancelToken,
     );
   }
 
@@ -142,66 +93,157 @@ class ApiClient {
     Map<String, dynamic>? data,
     bool auth = true,
   }) {
-    return request(path, method: 'PUT', data: data, auth: auth);
+    return request(
+      path,
+      method: 'PUT',
+      data: data,
+      auth: auth,
+    );
   }
 
   Future<Map<String, dynamic>> request(
     String path, {
     required String method,
     Map<String, dynamic>? data,
-    FormData? formData,
-    Map<String, dynamic>? query,
     bool auth = true,
-    CancelToken? cancelToken,
   }) async {
-    final options = Options(
-      method: method,
-      contentType: formData != null ? 'multipart/form-data' : Headers.jsonContentType,
-      responseType: ResponseType.json,
-      sendTimeout: const Duration(seconds: 20),
-      receiveTimeout: const Duration(seconds: 20),
-      extra: {'auth': auth},
-    );
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    final verb = method.toUpperCase();
+    final payload = data ?? <String, dynamic>{};
 
-    final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
-    try {
-      final response = await _dio.request<Map<String, dynamic>>(
-        normalizedPath,
-        data: formData ?? data,
-        queryParameters: query,
-        options: options,
-        cancelToken: cancelToken,
-      );
-
-      final payload = response.data ?? <String, dynamic>{};
-      _logger.fine('[$method] $path -> ${jsonEncode(payload)}');
-      return payload;
-    } on DioException catch (error) {
-      final status = error.response?.statusCode;
-      final message = _extractMessage(error);
-      if (error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.receiveTimeout ||
-          error.type == DioExceptionType.sendTimeout) {
-        throw NetworkException('Network timeout. Please try again.');
-      }
-      if (error.type == DioExceptionType.badResponse) {
-        throw ApiException(message ?? 'Request failed', statusCode: status);
-      }
-      throw ApiException(message ?? 'Unexpected error', statusCode: status);
-    } catch (error, stack) {
-      _logger.severe('Unexpected error while calling $path', error, stack);
-      throw ApiException('Unexpected error: $error');
+    String? token;
+    if (auth) {
+      token = await _ensureToken();
     }
+
+    switch ((verb, normalizedPath)) {
+      case ('POST', '/auth/login'):
+        final phone = payload['phone'] as String?;
+        final password = payload['password'] as String?;
+        if (phone == null || password == null) {
+          throw ApiException('Téléphone ou mot de passe manquant');
+        }
+        final response = await _database.login(phone: phone, password: password);
+        await setToken(response['token'] as String);
+        return response;
+      case ('POST', '/auth/register'):
+        final phone = payload['phone'] as String?;
+        final password = payload['password'] as String?;
+        if (phone == null || password == null) {
+          throw ApiException('Téléphone ou mot de passe manquant');
+        }
+        final avatar = _extractAvatar(payload['avatar']);
+        final response = await _database.register(
+          phone: phone,
+          password: password,
+          name: payload['name'] as String?,
+          email: payload['email'] as String?,
+          avatar: avatar,
+        );
+        await setToken(response['token'] as String);
+        return response;
+      case ('POST', '/auth/logout'):
+        if (token != null) {
+          await _database.logout(token);
+        }
+        return {'success': true};
+      case ('GET', '/users/profile'):
+        if (token == null) {
+          throw ApiException('Session expirée', statusCode: 401);
+        }
+        final profile = await _database.refreshProfile(token);
+        return profile;
+      case ('PUT', '/users/profile'):
+        if (token == null) {
+          throw ApiException('Session expirée', statusCode: 401);
+        }
+        await _database.updateProfile(token, payload);
+        final profile = await _database.refreshProfile(token);
+        return profile;
+      case ('POST', '/users/online'):
+        if (token == null) {
+          throw ApiException('Session expirée', statusCode: 401);
+        }
+        final isOnline = payload['isOnline'] != false;
+        await _database.setOnlineStatus(token, isOnline);
+        return {'success': true};
+      case ('GET', '/chats'):
+        if (token == null) {
+          throw ApiException('Session expirée', statusCode: 401);
+        }
+        final chats = await _database.chatsForToken(token);
+        return {'chats': chats};
+    }
+
+    final messagesMatch = _chatMessagesRegExp.firstMatch(normalizedPath);
+    if (messagesMatch != null) {
+      final chatId = int.tryParse(messagesMatch.group(1)!);
+      if (chatId == null) {
+        throw ApiException('Identifiant de chat invalide');
+      }
+      if (verb == 'GET') {
+        if (token == null) {
+          throw ApiException('Session expirée', statusCode: 401);
+        }
+        final messages =
+            await _database.messagesForChat(token: token, chatId: chatId);
+        return {'messages': messages};
+      }
+      if (verb == 'POST') {
+        if (token == null) {
+          throw ApiException('Session expirée', statusCode: 401);
+        }
+        final content = (payload['content'] as String?)?.trim();
+        if (content == null || content.isEmpty) {
+          throw ApiException('Message vide');
+        }
+        final message = await _database.createMessage(
+          token: token,
+          chatId: chatId,
+          content: content,
+        );
+        return {'message': message};
+      }
+    }
+
+    final muteMatch = _chatMuteRegExp.firstMatch(normalizedPath);
+    if (muteMatch != null) {
+      final chatId = int.tryParse(muteMatch.group(1)!);
+      if (chatId == null) {
+        throw ApiException('Identifiant de chat invalide');
+      }
+      if (token == null) {
+        throw ApiException('Session expirée', statusCode: 401);
+      }
+      await _database.muteChat(token: token, chatId: chatId);
+      return {'success': true};
+    }
+
+    throw ApiException('Endpoint $verb $normalizedPath non pris en charge');
   }
 
-  String? _extractMessage(DioException error) {
-    final data = error.response?.data;
-    if (data is Map<String, dynamic>) {
-      final message = data['message'] ?? data['error'];
-      if (message is String && message.isNotEmpty) {
-        return message;
-      }
+  Future<String> _ensureToken() async {
+    final token = await currentToken();
+    if (token == null) {
+      throw ApiException('Session expirée, veuillez vous reconnecter',
+          statusCode: 401);
     }
-    return error.message;
+    return token;
   }
+
+  Uint8List? _extractAvatar(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is Uint8List) {
+      return value;
+    }
+    if (value is List<int>) {
+      return Uint8List.fromList(value);
+    }
+    return null;
+  }
+
+  static final _chatMessagesRegExp = RegExp(r'^/chats/(.+?)/messages$');
+  static final _chatMuteRegExp = RegExp(r'^/chats/(.+?)/mute$');
 }

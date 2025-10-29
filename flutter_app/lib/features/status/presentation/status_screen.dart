@@ -24,6 +24,11 @@ class StatusScreen extends ConsumerWidget {
             return _AddStatusCard();
           }
           final chat = statuses[index - 1];
+          final avatarImage = chat.avatarBytes != null
+              ? MemoryImage(chat.avatarBytes!)
+              : chat.avatarUrl != null
+                  ? NetworkImage(chat.avatarUrl!)
+                  : null;
           return Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -31,8 +36,8 @@ class StatusScreen extends ConsumerWidget {
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               leading: CircleAvatar(
                 radius: 28,
-                backgroundImage: chat.avatarUrl != null ? NetworkImage(chat.avatarUrl!) : null,
-                child: chat.avatarUrl == null
+                backgroundImage: avatarImage,
+                child: avatarImage == null
                     ? Text(chat.title.characters.first.toUpperCase())
                     : null,
               ),

@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/user.dart';
@@ -89,7 +89,7 @@ class AuthController extends StateNotifier<AuthState> {
     required String password,
     String? name,
     String? email,
-    MultipartFile? avatar,
+    Uint8List? avatarBytes,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -98,7 +98,7 @@ class AuthController extends StateNotifier<AuthState> {
         password: password,
         name: name,
         email: email,
-        avatar: avatar,
+        avatarBytes: avatarBytes,
       );
       state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();

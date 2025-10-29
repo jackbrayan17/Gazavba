@@ -119,6 +119,11 @@ class _ChatListTile extends ConsumerWidget {
     final subtitle = lastMessage != null ? _formatMessage(lastMessage) : 'Nouveau chat';
     final time = lastMessage?.createdAt ?? chat.updatedAt;
     final timeLabel = DateFormat.Hm().format(time);
+    final avatarImage = chat.avatarBytes != null
+        ? MemoryImage(chat.avatarBytes!)
+        : chat.avatarUrl != null
+            ? NetworkImage(chat.avatarUrl!)
+            : null;
 
     return InkWell(
       onTap: () => context.go(
@@ -134,9 +139,8 @@ class _ChatListTile extends ConsumerWidget {
               tag: 'chat-avatar-${chat.id}',
               child: CircleAvatar(
                 radius: 28,
-                backgroundImage:
-                    chat.avatarUrl != null ? NetworkImage(chat.avatarUrl!) : null,
-                child: chat.avatarUrl == null
+                backgroundImage: avatarImage,
+                child: avatarImage == null
                     ? Text(chat.title.characters.first.toUpperCase())
                     : null,
               ),

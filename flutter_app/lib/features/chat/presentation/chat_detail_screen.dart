@@ -64,6 +64,11 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
             updatedAt: DateTime.now(),
           ),
         );
+    final avatarImage = chat.avatarBytes != null
+        ? MemoryImage(chat.avatarBytes!)
+        : chat.avatarUrl != null
+            ? NetworkImage(chat.avatarUrl!)
+            : null;
 
     final messages = (chatState.messagesByChat[widget.chatId] ?? const <Message>[])
         .map((message) => message.senderId == authState.user?.id
@@ -80,9 +85,8 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
             Hero(
               tag: 'chat-avatar-${chat.id}',
               child: CircleAvatar(
-                backgroundImage:
-                    chat.avatarUrl != null ? NetworkImage(chat.avatarUrl!) : null,
-                child: chat.avatarUrl == null
+                backgroundImage: avatarImage,
+                child: avatarImage == null
                     ? Text(chat.title.characters.first.toUpperCase())
                     : null,
               ),

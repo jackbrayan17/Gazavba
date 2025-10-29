@@ -1,4 +1,5 @@
-import 'package:dio/dio.dart';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/user.dart';
@@ -36,18 +37,17 @@ class AuthRepository {
     required String password,
     String? name,
     String? email,
-    MultipartFile? avatar,
+    Uint8List? avatarBytes,
   }) async {
-    final formData = FormData.fromMap({
-      'phone': phone,
-      'password': password,
-      if (name != null) 'name': name,
-      if (email != null) 'email': email,
-      if (avatar != null) 'avatar': avatar,
-    });
     final payload = await _client.post(
       '/auth/register',
-      formData: formData,
+      data: {
+        'phone': phone,
+        'password': password,
+        if (name != null) 'name': name,
+        if (email != null) 'email': email,
+        if (avatarBytes != null) 'avatar': avatarBytes,
+      },
       auth: false,
     );
     final token = payload['token'] as String?;
