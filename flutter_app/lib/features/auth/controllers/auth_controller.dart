@@ -90,6 +90,7 @@ class AuthController extends StateNotifier<AuthState> {
     String? name,
     String? email,
     Uint8List? avatarBytes,
+    String? avatarFileExtension,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -99,6 +100,7 @@ class AuthController extends StateNotifier<AuthState> {
         name: name,
         email: email,
         avatarBytes: avatarBytes,
+        avatarFileExtension: avatarFileExtension,
       );
       state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();

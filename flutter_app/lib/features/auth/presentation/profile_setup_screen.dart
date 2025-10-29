@@ -185,6 +185,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     }
 
     final notifier = ref.read(authControllerProvider.notifier);
+    final avatarExtension = _avatar?.path.split('.').last;
     final result = await notifier.register(
       phone: widget.draft.phone,
       password: widget.draft.password,
@@ -193,6 +194,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
           ? null
           : _emailController.text.trim(),
       avatarBytes: _avatarBytes,
+      avatarFileExtension: avatarExtension,
     );
 
     if (result.isSuccess && mounted) {
