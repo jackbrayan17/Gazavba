@@ -29,6 +29,16 @@ class Message {
   final bool isMine;
   final String? status;
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'chatId': chatId,
+        'senderId': senderId,
+        'content': content,
+        'createdAt': createdAt.toIso8601String(),
+        'status': status,
+        'isMine': isMine,
+      };
+
   Message copyWith({
     bool? isMine,
     String? status,

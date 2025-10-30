@@ -3,16 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/chat.dart';
 import '../../../core/models/message.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/socket_service.dart';
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   final client = ref.watch(apiClientProvider);
-  return ChatRepository(client);
+  final socket = ref.watch(socketServiceProvider);
+  return ChatRepository(client, socket);
 });
 
 class ChatRepository {
-  ChatRepository(this._client);
+  ChatRepository(this._client, this._socketService);
 
   final ApiClient _client;
+  final SocketService _socketService;
 
   Future<List<Chat>> fetchChats() async {
     final payload = await _client.get('/chats');
@@ -29,7 +32,9 @@ class ChatRepository {
   Future<Message> sendMessage(String chatId, String content) async {
     final payload = await _client.post('/chats/$chatId/messages', data: {'content': content});
     final message = payload['message'] as Map<String, dynamic>? ?? payload;
-    return Message.fromJson(message);
+    final parsed = Message.fromJson(message);
+    _socketService.pushLocalMessage(parsed.toJson());
+    return parsed;
   }
 
   Future<void> muteChat(String chatId, {int? durationMinutes}) async {

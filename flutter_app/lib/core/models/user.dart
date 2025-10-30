@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class User {
   const User({
     required this.id,
@@ -5,16 +7,29 @@ class User {
     required this.phone,
     this.email,
     this.avatarUrl,
+    this.avatarBytes,
     this.isOnline = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    final dynamic avatarValue = json['avatar'] ?? json['avatarUrl'];
+    String? avatarUrl;
+    Uint8List? avatarBytes;
+    if (avatarValue is String) {
+      avatarUrl = avatarValue;
+    } else if (avatarValue is Uint8List) {
+      avatarBytes = avatarValue;
+    } else if (avatarValue is List<int>) {
+      avatarBytes = Uint8List.fromList(List<int>.from(avatarValue));
+    }
+
     return User(
       id: json['id'].toString(),
       name: (json['name'] ?? json['phone'] ?? 'User') as String,
       phone: (json['phone'] ?? '') as String,
       email: json['email'] as String?,
-      avatarUrl: json['avatar'] as String? ?? json['avatarUrl'] as String?,
+      avatarUrl: avatarUrl,
+      avatarBytes: avatarBytes,
       isOnline: json['isOnline'] == true,
     );
   }
@@ -24,6 +39,7 @@ class User {
   final String phone;
   final String? email;
   final String? avatarUrl;
+  final Uint8List? avatarBytes;
   final bool isOnline;
 
   Map<String, dynamic> toJson() => {
@@ -31,7 +47,7 @@ class User {
         'name': name,
         'phone': phone,
         'email': email,
-        'avatar': avatarUrl,
+        'avatar': avatarUrl ?? avatarBytes,
         'isOnline': isOnline,
       };
 
@@ -41,6 +57,7 @@ class User {
     String? phone,
     String? email,
     String? avatarUrl,
+    Uint8List? avatarBytes,
     bool? isOnline,
   }) {
     return User(
@@ -49,6 +66,7 @@ class User {
       phone: phone ?? this.phone,
       email: email ?? this.email,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      avatarBytes: avatarBytes ?? this.avatarBytes,
       isOnline: isOnline ?? this.isOnline,
     );
   }

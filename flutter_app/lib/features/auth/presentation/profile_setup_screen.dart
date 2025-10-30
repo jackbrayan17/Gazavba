@@ -1,11 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http_parser/http_parser.dart';
 
 import '../../auth/controllers/auth_controller.dart';
 import 'register_draft.dart';
@@ -186,16 +184,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       return;
     }
 
-    MultipartFile? avatar;
-    if (_avatar != null && _avatarBytes != null) {
-      avatar = MultipartFile.fromBytes(
-        _avatarBytes!,
-        filename: _avatar!.name,
-        contentType: DioMediaType.parse(_avatar!.mimeType ?? 'image/jpeg'),
-      );
-    }
-
     final notifier = ref.read(authControllerProvider.notifier);
+    final avatarExtension = _avatar?.path.split('.').last;
     final result = await notifier.register(
       phone: widget.draft.phone,
       password: widget.draft.password,
@@ -203,21 +193,12 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       email: _emailController.text.trim().isEmpty
           ? null
           : _emailController.text.trim(),
-      avatar: avatar,
+      avatarBytes: _avatarBytes,
+      avatarFileExtension: avatarExtension,
     );
 
     if (result.isSuccess && mounted) {
       context.go('/home/chats');
     }
-  }
-}
-
-class DioMediaType {
-  static MediaType parse(String value) {
-    final parts = value.split('/');
-    if (parts.length == 2) {
-      return MediaType(parts[0], parts[1]);
-    }
-    return MediaType('image', 'jpeg');
   }
 }
