@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/status.dart';
 import '../../../core/utils/exceptions.dart';
@@ -32,18 +36,24 @@ class StatusState {
     this.isLoading = false,
     this.error,
     this.unseenCount = 0,
+    this.mutedUserIds = const {},
+    this.blockedUserIds = const {},
   });
 
   final List<Status> statuses;
   final bool isLoading;
   final String? error;
   final int unseenCount;
+  final Set<String> mutedUserIds;
+  final Set<String> blockedUserIds;
 
   StatusState copyWith({
     List<Status>? statuses,
     bool? isLoading,
     String? error,
     int? unseenCount,
+    Set<String>? mutedUserIds,
+    Set<String>? blockedUserIds,
     bool clearError = false,
   }) {
     return StatusState(
@@ -51,6 +61,8 @@ class StatusState {
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : error ?? this.error,
       unseenCount: unseenCount ?? this.unseenCount,
+      mutedUserIds: mutedUserIds ?? this.mutedUserIds,
+      blockedUserIds: blockedUserIds ?? this.blockedUserIds,
     );
   }
 }
@@ -58,11 +70,17 @@ class StatusState {
 class StatusController extends StateNotifier<StatusState> {
   StatusController({required this.repository})
       : _logger = Logger('StatusController'),
-        super(const StatusState());
+        super(const StatusState()) {
+    unawaited(_initialisePreferences());
+  }
 
   final StatusRepository repository;
   final Logger _logger;
   Timer? _refreshTimer;
+  SharedPreferences? _prefs;
+
+  static const _mutedKey = 'gazavba_status_muted';
+  static const _blockedKey = 'gazavba_status_blocked';
 
   Future<void> onAuthStateChanged(AuthState authState) async {
     if (authState.isAuthenticated) {
@@ -78,9 +96,12 @@ class StatusController extends StateNotifier<StatusState> {
     this.state = state.copyWith(isLoading: true, clearError: true);
     try {
       final statuses = await repository.fetchStatuses();
+      final filtered = statuses
+          .where((status) => !state.blockedUserIds.contains(status.userId))
+          .toList();
       final unseen = await repository.unseenCount();
       this.state = state.copyWith(
-        statuses: statuses,
+        statuses: filtered,
         unseenCount: unseen,
         isLoading: false,
       );
@@ -136,11 +157,113 @@ class StatusController extends StateNotifier<StatusState> {
     }
   }
 
+  bool isMuted(String userId) => state.mutedUserIds.contains(userId);
+
+  bool isBlocked(String userId) => state.blockedUserIds.contains(userId);
+
+  Future<void> toggleMute(String userId) async {
+    final muted = Set<String>.from(state.mutedUserIds);
+    if (!muted.add(userId)) {
+      muted.remove(userId);
+    }
+    state = state.copyWith(mutedUserIds: muted);
+    await _prefs?.setStringList(_mutedKey, muted.toList());
+  }
+
+  Future<void> toggleBlock(String userId) async {
+    final blocked = Set<String>.from(state.blockedUserIds);
+    if (!blocked.add(userId)) {
+      blocked.remove(userId);
+    }
+    final muted = Set<String>.from(state.mutedUserIds)..remove(userId);
+    final filteredStatuses = state.statuses
+        .where((status) => !blocked.contains(status.userId))
+        .toList();
+    state = state.copyWith(
+      blockedUserIds: blocked,
+      statuses: filteredStatuses,
+      mutedUserIds: muted,
+    );
+    await _prefs?.setStringList(_blockedKey, blocked.toList());
+    await _prefs?.setStringList(_mutedKey, muted.toList());
+  }
+
+  Future<Result<String>> download(Status status) async {
+    if (status.mediaUrl == null) {
+      return Failure(ApiException('Ce statut ne contient pas de média à enregistrer.'));
+    }
+    final granted = await _ensureStoragePermissions();
+    if (!granted) {
+      return Failure(ApiException('Permission requise pour enregistrer le statut.'));
+    }
+    try {
+      final directory = await _resolveStatusDirectory();
+      final path = await repository.downloadStatusMedia(
+        status: status,
+        directoryPath: directory.path,
+      );
+      return Success(path);
+    } catch (error) {
+      return Failure(error);
+    }
+  }
+
   void _startRefreshLoop() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       unawaited(loadStatuses());
     });
+  }
+
+  Future<void> _initialisePreferences() async {
+    _prefs = await SharedPreferences.getInstance();
+    final muted = _prefs?.getStringList(_mutedKey) ?? const [];
+    final blocked = _prefs?.getStringList(_blockedKey) ?? const [];
+    state = state.copyWith(
+      mutedUserIds: muted.toSet(),
+      blockedUserIds: blocked.toSet(),
+    );
+  }
+
+  Future<bool> _ensureStoragePermissions() async {
+    final permissions = <Permission>{};
+    if (Platform.isAndroid) {
+      permissions.add(Permission.storage);
+      permissions.add(Permission.photos);
+      permissions.add(Permission.videos);
+      permissions.add(Permission.audio);
+    } else if (Platform.isIOS) {
+      permissions.add(Permission.photos);
+    }
+
+    if (permissions.isEmpty) {
+      return true;
+    }
+
+    for (final permission in permissions) {
+      if (await permission.isGranted) {
+        continue;
+      }
+      final result = await permission.request();
+      if (!result.isGranted) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<Directory> _resolveStatusDirectory() async {
+    Directory base;
+    if (Platform.isAndroid) {
+      base = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+    } else {
+      base = await getApplicationDocumentsDirectory();
+    }
+    final directory = Directory('${base.path}/Gazavba/status');
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    return directory;
   }
 
   @override

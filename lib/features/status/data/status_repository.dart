@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/status.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/utils/exceptions.dart';
 
 final statusRepositoryProvider = Provider<StatusRepository>((ref) {
   final client = ref.watch(apiClientProvider);
@@ -59,6 +60,21 @@ class StatusRepository {
     }
     return 0;
   }
+
+  Future<String> downloadStatusMedia({
+    required Status status,
+    required String directoryPath,
+  }) async {
+    final url = status.mediaUrl;
+    if (url == null || url.isEmpty) {
+      throw ApiException('Aucun média à télécharger pour ce statut');
+    }
+    final extension = _inferExtension(url);
+    final filename = 'status_${status.id}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final savePath = '$directoryPath/$filename';
+    await _client.download(url, savePath);
+    return savePath;
+  }
 }
 
 List<dynamic> _extractList(dynamic payload, String key) {
@@ -72,4 +88,17 @@ List<dynamic> _extractList(dynamic payload, String key) {
     }
   }
   return const [];
+}
+
+String _inferExtension(String url) {
+  final lower = url.toLowerCase();
+  if (lower.endsWith('.png')) return 'png';
+  if (lower.endsWith('.gif')) return 'gif';
+  if (lower.endsWith('.mp4')) return 'mp4';
+  if (lower.endsWith('.mov')) return 'mov';
+  if (lower.endsWith('.mkv')) return 'mkv';
+  if (lower.endsWith('.mp3')) return 'mp3';
+  if (lower.endsWith('.aac')) return 'aac';
+  if (lower.endsWith('.wav')) return 'wav';
+  return 'jpg';
 }

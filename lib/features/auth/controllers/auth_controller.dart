@@ -119,6 +119,30 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  Future<Result<User>> updateProfile({
+    String? name,
+    String? email,
+    String? phone,
+    MultipartFile? avatar,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final user = await repository.updateProfile(
+        name: name,
+        email: email,
+        phone: phone,
+        avatar: avatar,
+      );
+      state = state.copyWith(user: user, isLoading: false);
+      _logger.info('Profil mis à jour pour ${user.id}');
+      return Success(user);
+    } on ApiException catch (error) {
+      state = state.copyWith(isLoading: false, error: error.message);
+      _logger.warning('Mise à jour du profil impossible: ${error.message}');
+      return Failure(error);
+    }
+  }
+
   Future<void> refreshProfile() async {
     try {
       final user = await repository.refreshProfile();

@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import '../../../core/models/chat.dart';
 import '../../../core/models/message.dart';
 import '../../../core/services/socket_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/utils/exceptions.dart';
 import '../../../core/utils/result.dart';
 import '../../auth/controllers/auth_controller.dart';
@@ -15,9 +16,11 @@ final chatControllerProvider =
     StateNotifierProvider<ChatController, ChatState>((ref) {
   final repository = ref.watch(chatRepositoryProvider);
   final socket = ref.watch(socketServiceProvider);
+  final notificationService = ref.watch(notificationServiceProvider);
   final controller = ChatController(
     repository: repository,
     socketService: socket,
+    notificationService: notificationService,
   );
 
   ref.listen<AuthState>(authControllerProvider, (previous, next) {
@@ -34,6 +37,9 @@ class ChatState {
     this.isLoading = false,
     this.error,
     this.activeChatId,
+    this.typingByChat = const {},
+    this.onlineUserIds = const {},
+    this.lastSeenByUser = const {},
   });
 
   final List<Chat> chats;
@@ -41,6 +47,9 @@ class ChatState {
   final bool isLoading;
   final String? error;
   final String? activeChatId;
+  final Map<String, bool> typingByChat;
+  final Set<String> onlineUserIds;
+  final Map<String, DateTime> lastSeenByUser;
 
   ChatState copyWith({
     List<Chat>? chats,
@@ -49,6 +58,9 @@ class ChatState {
     String? error,
     bool clearError = false,
     String? activeChatId,
+    Map<String, bool>? typingByChat,
+    Set<String>? onlineUserIds,
+    Map<String, DateTime>? lastSeenByUser,
   }) {
     return ChatState(
       chats: chats ?? this.chats,
@@ -56,16 +68,24 @@ class ChatState {
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : error ?? this.error,
       activeChatId: activeChatId ?? this.activeChatId,
+      typingByChat: typingByChat ?? this.typingByChat,
+      onlineUserIds: onlineUserIds ?? this.onlineUserIds,
+      lastSeenByUser: lastSeenByUser ?? this.lastSeenByUser,
     );
   }
 }
 
 class ChatController extends StateNotifier<ChatState> {
-  ChatController({required this.repository, required this.socketService})
+  ChatController({
+    required this.repository,
+    required this.socketService,
+    required this.notificationService,
+  })
       : super(const ChatState());
 
   final ChatRepository repository;
   final SocketService socketService;
+  final NotificationService notificationService;
   StreamSubscription<SocketEvent>? _socketSubscription;
   final Logger _logger = Logger('ChatController');
   String? _userId;
@@ -133,6 +153,21 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  void notifyTyping(String chatId, bool isTyping) {
+    socketService.emit('typing', {
+      'chatId': chatId,
+      'userId': _userId,
+      'isTyping': isTyping,
+    });
+    final updated = Map<String, bool>.from(state.typingByChat);
+    if (isTyping) {
+      updated[chatId] = true;
+    } else {
+      updated.remove(chatId);
+    }
+    state = state.copyWith(typingByChat: updated);
+  }
+
   void _handleSocketEvent(SocketEvent event) {
     switch (event.type) {
       case SocketEventType.connected:
@@ -148,6 +183,19 @@ class ChatController extends StateNotifier<ChatState> {
         break;
       case SocketEventType.messageError:
         _logger.warning('Socket message error: ${event.data}');
+        break;
+      case SocketEventType.userOnline:
+        _handlePresence(event.data, isOnline: true);
+        break;
+      case SocketEventType.userOffline:
+        _handlePresence(event.data, isOnline: false);
+        break;
+      case SocketEventType.typing:
+        _handleTyping(event.data);
+        break;
+      case SocketEventType.presence:
+        final isOnline = event.data is Map && event.data['isOnline'] == true;
+        _handlePresence(event.data, isOnline: isOnline);
         break;
       default:
         break;
@@ -188,12 +236,72 @@ class ChatController extends StateNotifier<ChatState> {
 
     final updatedChats = state.chats.map((chat) {
       if (chat.id == chatId) {
-        return chat.copyWith(lastMessage: message, updatedAt: DateTime.now());
+        final shouldIncrement =
+            !message.isMine && state.activeChatId != chatId;
+        final unread = shouldIncrement
+            ? (chat.unreadCount + 1)
+            : message.isMine
+                ? chat.unreadCount
+                : 0;
+        return chat.copyWith(
+          lastMessage: message,
+          updatedAt: DateTime.now(),
+          unreadCount: unread,
+        );
       }
       return chat;
     }).toList();
 
-    state = state.copyWith(messagesByChat: updatedMap, chats: updatedChats);
+    final typingMap = Map<String, bool>.from(state.typingByChat)..remove(chatId);
+
+    state = state.copyWith(
+      messagesByChat: updatedMap,
+      chats: updatedChats,
+      typingByChat: typingMap,
+    );
+
+    final allMessages = updatedMap.values
+        .expand((messages) => messages)
+        .toList();
+    unawaited(notificationService.showLatestMessages(allMessages));
+  }
+
+  void _handleTyping(dynamic data) {
+    if (data is! Map) return;
+    final chatId = data['chatId']?.toString();
+    if (chatId == null) return;
+    final isTyping = data['isTyping'] == true;
+    final updated = Map<String, bool>.from(state.typingByChat);
+    if (isTyping) {
+      updated[chatId] = true;
+    } else {
+      updated.remove(chatId);
+    }
+    state = state.copyWith(typingByChat: updated);
+  }
+
+  void _handlePresence(dynamic data, {required bool isOnline}) {
+    if (data is! Map) return;
+    final userId = data['userId']?.toString();
+    if (userId == null) return;
+    final updatedOnline = Set<String>.from(state.onlineUserIds);
+    if (isOnline) {
+      updatedOnline.add(userId);
+    } else {
+      updatedOnline.remove(userId);
+    }
+    final lastSeenMap = Map<String, DateTime>.from(state.lastSeenByUser);
+    final lastSeenStr = data['lastSeen']?.toString();
+    final lastSeen = DateTime.tryParse(lastSeenStr ?? '');
+    if (lastSeen != null) {
+      lastSeenMap[userId] = lastSeen;
+    } else if (!isOnline) {
+      lastSeenMap[userId] = DateTime.now();
+    }
+    state = state.copyWith(
+      onlineUserIds: updatedOnline,
+      lastSeenByUser: lastSeenMap,
+    );
   }
 
   @override

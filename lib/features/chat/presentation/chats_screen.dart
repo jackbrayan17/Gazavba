@@ -55,6 +55,11 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
         title: const Text('Discussions'),
         actions: [
           IconButton(
+            tooltip: 'Voir les contacts',
+            icon: const Icon(Icons.people_alt_rounded),
+            onPressed: () => context.go('/home/contacts'),
+          ),
+          IconButton(
             tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () =>
@@ -123,9 +128,27 @@ class _ChatListTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final lastMessage = chat.lastMessage;
     final subtitle =
-    lastMessage != null ? _formatMessage(lastMessage) : 'Nouveau chat';
+        lastMessage != null ? _formatMessage(lastMessage) : 'Nouveau chat';
     final time = lastMessage?.createdAt ?? chat.updatedAt;
     final timeLabel = DateFormat.Hm().format(time);
+    final chatState = ref.watch(chatControllerProvider);
+    final isTyping = chatState.typingByChat[chat.id] == true;
+    final participantIds = chat.participants.map((user) => user.id).toSet();
+    final online = participantIds.intersection(chatState.onlineUserIds).isNotEmpty;
+    DateTime? lastSeen;
+    for (final id in participantIds) {
+      final seen = chatState.lastSeenByUser[id];
+      if (seen != null && (lastSeen == null || seen.isAfter(lastSeen))) {
+        lastSeen = seen;
+      }
+    }
+    final statusText = isTyping
+        ? 'En train d\'écrire…'
+        : subtitle.isNotEmpty
+            ? subtitle
+            : lastSeen != null
+                ? 'Vu ${DateFormat('dd/MM HH:mm').format(lastSeen)}'
+                : 'Conversation sécurisée';
 
     return InkWell(
       onTap: () => context.go(
@@ -138,13 +161,38 @@ class _ChatListTile extends ConsumerWidget {
           children: [
             Hero(
               tag: 'chat-avatar-${chat.id}',
-              child: CircleAvatar(
-                radius: 28,
-                backgroundImage:
-                chat.avatarUrl != null ? NetworkImage(chat.avatarUrl!) : null,
-                child: chat.avatarUrl == null
-                    ? Text(chat.title.characters.first.toUpperCase())
-                    : null,
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundImage:
+                          chat.avatarUrl != null ? NetworkImage(chat.avatarUrl!) : null,
+                      child: chat.avatarUrl == null
+                          ? Text(chat.title.characters.first.toUpperCase())
+                          : null,
+                    ),
+                    if (online)
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.green,
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 16),
@@ -173,10 +221,11 @@ class _ChatListTile extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    subtitle,
+                    statusText,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color:
-                      Theme.of(context).colorScheme.onSurfaceVariant,
+                      color: isTyping
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
