@@ -9,6 +9,8 @@ import 'package:intl/intl.dart';
 import '../../../core/models/status.dart';
 import '../../../core/utils/exceptions.dart';
 import '../../../core/utils/result.dart';
+import '../../auth/controllers/auth_controller.dart';
+import '../../chat/controllers/chat_controller.dart';
 import '../controllers/status_controller.dart';
 
 class StatusScreen extends ConsumerWidget {
@@ -18,6 +20,22 @@ class StatusScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(statusControllerProvider);
     final controller = ref.read(statusControllerProvider.notifier);
+    final chatState = ref.watch(chatControllerProvider);
+    final authState = ref.watch(authControllerProvider);
+
+    final currentUserId = authState.user?.id;
+    final allowedUserIds = <String>{
+      if (currentUserId != null) currentUserId,
+      ...chatState.chats.expand((chat) => chat.participants.map((user) => user.id)),
+    };
+
+    final filtered = state.statuses
+        .where((status) => allowedUserIds.contains(status.userId))
+        .toList();
+    final mutedSet = state.mutedUserIds;
+    final activeStatuses = filtered.where((status) => !mutedSet.contains(status.userId)).toList();
+    final mutedStatuses = filtered.where((status) => mutedSet.contains(status.userId)).toList();
+    final hasStatuses = activeStatuses.isNotEmpty || mutedStatuses.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,23 +71,49 @@ class StatusScreen extends ConsumerWidget {
         onRefresh: controller.loadStatuses,
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
-          child: state.isLoading && state.statuses.isEmpty
+          child: state.isLoading && !hasStatuses
               ? const _StatusLoading()
-              : state.statuses.isEmpty
+              : !hasStatuses
                   ? const _EmptyStatus()
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                      itemCount: state.statuses.length + 1,
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                      itemCount: 1 +
+                          activeStatuses.length +
+                          (mutedStatuses.isNotEmpty ? 1 + mutedStatuses.length : 0),
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         if (index == 0) {
                           return _ComposerCard(onTap: () => _openComposer(context));
                         }
-                        final status = state.statuses[index - 1];
-                        return _StatusTile(
-                          status: status,
-                          onViewed: () => controller.markViewed(status.id),
-                        );
+                        index -= 1;
+                        if (index < activeStatuses.length) {
+                          final status = activeStatuses[index];
+                          return _StatusTile(
+                            status: status,
+                            isMuted: false,
+                            onViewed: () => controller.markViewed(status.id),
+                            onToggleMute: () => controller.toggleMute(status.userId),
+                            onToggleBlock: () => _confirmBlock(context, controller, status),
+                            onDownload: () => _downloadStatus(context, controller, status),
+                          );
+                        }
+                        index -= activeStatuses.length;
+                        if (mutedStatuses.isNotEmpty) {
+                          if (index == 0) {
+                            return const _MutedSectionHeader();
+                          }
+                          index -= 1;
+                          final status = mutedStatuses[index];
+                          return _StatusTile(
+                            status: status,
+                            isMuted: true,
+                            onViewed: () => controller.markViewed(status.id),
+                            onToggleMute: () => controller.toggleMute(status.userId),
+                            onToggleBlock: () => _confirmBlock(context, controller, status),
+                            onDownload: () => _downloadStatus(context, controller, status),
+                          );
+                        }
+                        return const SizedBox.shrink();
                       },
                     ),
         ),
@@ -83,6 +127,57 @@ class StatusScreen extends ConsumerWidget {
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (context) => const _StatusComposerSheet(),
+    );
+  }
+}
+
+Future<void> _downloadStatus(
+  BuildContext context,
+  StatusController controller,
+  Status status,
+) async {
+  final result = await controller.download(status);
+  if (result is Success<String>) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Statut enregistré dans ${result.value}')),
+    );
+  } else if (result is Failure<String>) {
+    final error = result.error;
+    final message = error is ApiException ? error.message : error.toString();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+}
+
+Future<void> _confirmBlock(
+  BuildContext context,
+  StatusController controller,
+  Status status,
+) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Bloquer ce statut ?'),
+      content: Text(
+        'Les statuts de ${status.userName ?? 'ce contact'} ne seront plus affichés. Vous pourrez les réactiver depuis vos paramètres.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).maybePop(false),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).maybePop(true),
+          child: const Text('Bloquer'),
+        ),
+      ],
+    ),
+  );
+  if (confirm == true) {
+    await controller.toggleBlock(status.userId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Statuts de ${status.userName ?? 'ce contact'} bloqués.')),
     );
   }
 }
@@ -128,22 +223,37 @@ class _ComposerCard extends StatelessWidget {
 }
 
 class _StatusTile extends StatelessWidget {
-  const _StatusTile({required this.status, required this.onViewed});
+  const _StatusTile({
+    required this.status,
+    required this.isMuted,
+    required this.onViewed,
+    required this.onToggleMute,
+    required this.onToggleBlock,
+    this.onDownload,
+  });
 
   final Status status;
+  final bool isMuted;
   final Future<void> Function() onViewed;
+  final Future<void> Function() onToggleMute;
+  final Future<void> Function() onToggleBlock;
+  final Future<void> Function()? onDownload;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final timeLabel = DateFormat('dd MMM • HH:mm').format(status.createdAt);
-    final borderColor = status.hasViewed ? colors.outlineVariant : colors.secondary;
+    final borderColor = isMuted
+        ? colors.outlineVariant
+        : status.hasViewed
+            ? colors.outlineVariant
+            : colors.secondary;
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),
-      opacity: status.hasViewed ? 0.7 : 1,
+      opacity: (status.hasViewed || isMuted) ? 0.6 : 1,
       child: Card(
-        elevation: status.hasViewed ? 0 : 4,
+        elevation: status.hasViewed || isMuted ? 0 : 4,
         child: InkWell(
           borderRadius: BorderRadius.circular(24),
           onTap: () async {
@@ -182,12 +292,36 @@ class _StatusTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        status.userName ?? 'Utilisateur Gazavba',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              status.userName ?? 'Utilisateur Gazavba',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isMuted)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: colors.surfaceVariant,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                'Muté',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(color: colors.onSurfaceVariant),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -214,16 +348,80 @@ class _StatusTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (status.mediaUrl != null)
+                if (status.mediaUrl != null) ...[
+                  const SizedBox(width: 12),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(18),
                     child: Image.network(
                       status.mediaUrl!,
-                      width: 72,
-                      height: 72,
+                      width: 64,
+                      height: 64,
                       fit: BoxFit.cover,
                     ),
                   ),
+                ],
+                PopupMenuButton<_StatusAction>(
+                  tooltip: 'Plus d\'actions',
+                  onSelected: (action) async {
+                    switch (action) {
+                      case _StatusAction.download:
+                        if (onDownload != null) {
+                          await onDownload!();
+                        }
+                        break;
+                      case _StatusAction.mute:
+                        await onToggleMute();
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              isMuted
+                                  ? 'Statuts réactivés pour ${status.userName ?? 'ce contact'}.'
+                                  : 'Statuts masqués pour ${status.userName ?? 'ce contact'}.',
+                            ),
+                          ),
+                        );
+                        break;
+                      case _StatusAction.block:
+                        await onToggleBlock();
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) {
+                    final items = <PopupMenuEntry<_StatusAction>>[];
+                    if (status.mediaUrl != null) {
+                      items.add(
+                        const PopupMenuItem<_StatusAction>(
+                          value: _StatusAction.download,
+                          child: ListTile(
+                            leading: Icon(Icons.download_rounded),
+                            title: Text('Télécharger'),
+                          ),
+                        ),
+                      );
+                    }
+                    items
+                      ..add(
+                        PopupMenuItem<_StatusAction>(
+                          value: _StatusAction.mute,
+                          child: ListTile(
+                            leading: Icon(isMuted ? Icons.volume_up_rounded : Icons.volume_off_rounded),
+                            title: Text(isMuted ? 'Réactiver ce statut' : 'Muter ce statut'),
+                          ),
+                        ),
+                      )
+                      ..add(
+                        const PopupMenuItem<_StatusAction>(
+                          value: _StatusAction.block,
+                          child: ListTile(
+                            leading: Icon(Icons.block_rounded),
+                            title: Text('Bloquer ce contact'),
+                          ),
+                        ),
+                      );
+                    return items;
+                  },
+                ),
               ],
             ),
           ),
@@ -232,6 +430,30 @@ class _StatusTile extends StatelessWidget {
     );
   }
 }
+
+class _MutedSectionHeader extends StatelessWidget {
+  const _MutedSectionHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Row(
+        children: [
+          const Icon(Icons.volume_off_rounded),
+          const SizedBox(width: 8),
+          Text(
+            'Statuts masqués',
+            style:
+                Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _StatusAction { download, mute, block }
 
 class _StatusComposerSheet extends ConsumerStatefulWidget {
   const _StatusComposerSheet();

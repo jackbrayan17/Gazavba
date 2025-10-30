@@ -17,6 +17,9 @@ enum SocketEventType {
   messageSent,
   messageError,
   userOnline,
+  userOffline,
+  typing,
+  presence,
 }
 
 class SocketEvent {
@@ -76,6 +79,15 @@ class SocketService {
     });
     socket.on('user_online', (data) {
       _eventController.add(SocketEvent(SocketEventType.userOnline, data));
+    });
+    socket.on('user_offline', (data) {
+      _eventController.add(SocketEvent(SocketEventType.userOffline, data));
+    });
+    socket.on('typing', (data) {
+      _eventController.add(SocketEvent(SocketEventType.typing, data));
+    });
+    socket.on('user_presence', (data) {
+      _eventController.add(SocketEvent(SocketEventType.presence, data));
     });
     socket.connect();
   }

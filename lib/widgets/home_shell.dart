@@ -13,6 +13,11 @@ class HomeShell extends StatelessWidget {
       label: 'Discussions',
     ),
     _HomeTab(
+      path: '/home/contacts',
+      icon: Icons.people_alt_rounded,
+      label: 'Contacts',
+    ),
+    _HomeTab(
       path: '/home/status',
       icon: Icons.timelapse_rounded,
       label: 'Statuts',

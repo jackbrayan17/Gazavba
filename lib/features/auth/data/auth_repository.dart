@@ -64,16 +64,27 @@ class AuthRepository {
     return User.fromJson(profile);
   }
 
-  Future<void> updateProfile({
+  Future<User> updateProfile({
     String? name,
     String? email,
     String? phone,
+    MultipartFile? avatar,
   }) async {
-    await _client.put('/users/profile', data: {
+    final payload = <String, dynamic>{
       if (name != null) 'name': name,
       if (email != null) 'email': email,
       if (phone != null) 'phone': phone,
-    });
+    };
+    final hasAvatar = avatar != null;
+    final response = await _client.put(
+      '/users/profile',
+      data: hasAvatar ? null : payload,
+      formData: hasAvatar ? FormData.fromMap({...payload, 'avatar': avatar}) : null,
+    );
+    final profile = response['user'] as Map<String, dynamic>? ??
+        response['data'] as Map<String, dynamic>? ??
+        response;
+    return User.fromJson(profile);
   }
 
   Future<void> logout() async {

@@ -97,6 +97,11 @@ class ApiClient {
     await _storage.deleteToken();
   }
 
+  Future<void> download(String url, String savePath) async {
+    final target = url.startsWith('http') ? url : '$_baseUrl${url.startsWith('/') ? url.substring(1) : url}';
+    await _dio.download(target, savePath);
+  }
+
 
   Future<String?> currentToken() async {
     if (_token != null) {
@@ -140,9 +145,16 @@ class ApiClient {
   Future<Map<String, dynamic>> put(
     String path, {
     Map<String, dynamic>? data,
+    FormData? formData,
     bool auth = true,
   }) {
-    return request(path, method: 'PUT', data: data, auth: auth);
+    return request(
+      path,
+      method: 'PUT',
+      data: data,
+      formData: formData,
+      auth: auth,
+    );
   }
 
   Future<Map<String, dynamic>> request(

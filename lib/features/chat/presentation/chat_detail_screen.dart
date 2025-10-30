@@ -44,6 +44,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
 
   @override
   void dispose() {
+    ref.read(chatControllerProvider.notifier).notifyTyping(widget.chatId, false);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -71,6 +72,29 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
             : message)
         .toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    final typing = chatState.typingByChat[widget.chatId] == true;
+    final participantIds = chat.participants.map((user) => user.id).toSet();
+    final online = participantIds.intersection(chatState.onlineUserIds).isNotEmpty;
+    DateTime? lastSeen;
+    for (final id in participantIds) {
+      final seen = chatState.lastSeenByUser[id];
+      if (seen != null && (lastSeen == null || seen.isAfter(lastSeen))) {
+        lastSeen = seen;
+      }
+    }
+    final statusLabel = typing
+        ? 'En train d\'écrire…'
+        : online
+            ? 'En ligne'
+            : lastSeen != null
+                ? 'Vu ${DateFormat('dd MMM • HH:mm').format(lastSeen)}'
+                : (chat.participants.isEmpty
+                    ? 'Conversation privée'
+                    : 'Dernière connexion indisponible');
+    final participantsLabel = chat.participants.isEmpty
+        ? 'Conversation privée'
+        : chat.participants.map((e) => e.name).join(', ');
 
     return Scaffold(
       appBar: AppBar(
@@ -101,12 +125,25 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    chat.participants.isEmpty
-                        ? 'Conversation privée'
-                        : chat.participants.map((e) => e.name).join(', '),
-                    style: Theme.of(context).textTheme.bodySmall,
+                    statusLabel,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: typing ? Theme.of(context).colorScheme.primary : null),
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (chat.participants.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      participantsLabel,
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -157,6 +194,11 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
                       decoration: const InputDecoration(
                         hintText: 'Écrivez un message sécurisé…',
                       ),
+                      onChanged: (value) {
+                        ref
+                            .read(chatControllerProvider.notifier)
+                            .notifyTyping(widget.chatId, value.trim().isNotEmpty);
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -182,6 +224,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
     if (content.isEmpty) return;
     _messageController.clear();
     await ref.read(chatControllerProvider.notifier).sendMessage(widget.chatId, content);
+    ref.read(chatControllerProvider.notifier).notifyTyping(widget.chatId, false);
     await _scrollToBottom();
   }
 
@@ -279,13 +322,7 @@ class _MessageBubble extends StatelessWidget {
                 ),
                 if (message.isMine) ...[
                   const SizedBox(width: 6),
-                  Icon(
-                    message.readAt != null
-                        ? Icons.done_all_rounded
-                        : Icons.done_rounded,
-                    size: 16,
-                    color: textColor.withOpacity(message.readAt != null ? 1 : 0.7),
-                  ),
+                  _MessageStatusIcon(message: message, color: textColor),
                 ],
               ],
             ),
@@ -358,5 +395,33 @@ class _EmptyConversation extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _MessageStatusIcon extends StatelessWidget {
+  const _MessageStatusIcon({required this.message, required this.color});
+
+  final Message message;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    IconData icon = Icons.done_rounded;
+    Color iconColor = color.withOpacity(0.7);
+
+    final status = message.status ?? '';
+    if (status == 'pending' || status == 'sending') {
+      icon = Icons.access_time_rounded;
+      iconColor = color.withOpacity(0.6);
+    } else if (status == 'sent') {
+      icon = Icons.done_rounded;
+    } else if (status == 'delivered') {
+      icon = Icons.done_all_rounded;
+    } else if (status == 'read' || message.readAt != null) {
+      icon = Icons.done_all_rounded;
+      iconColor = Theme.of(context).colorScheme.secondary;
+    }
+
+    return Icon(icon, size: 16, color: iconColor);
   }
 }

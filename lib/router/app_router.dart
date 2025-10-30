@@ -13,6 +13,7 @@ import '../features/auth/presentation/register_draft.dart';
 import '../core/models/chat.dart';
 import '../features/chat/presentation/chat_detail_screen.dart';
 import '../features/chat/presentation/chats_screen.dart';
+import '../features/contacts/presentation/contacts_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/status/presentation/status_screen.dart';
 import '../widgets/home_shell.dart';
@@ -112,6 +113,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 },
               ),
             ],
+          ),
+          GoRoute(
+            path: '/home/contacts',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: ContactsScreen(),
+            ),
           ),
           GoRoute(
             path: '/home/status',
