@@ -18,15 +18,18 @@ class Message {
     final text = (json['text'] ?? json['content'] ?? json['message'] ?? '') as String;
     return Message(
       id: json['id'].toString(),
-      chatId: json['chatId']?.toString() ?? json['conversationId']?.toString() ?? json['chat_id']?.toString() ?? '',
+      chatId: json['chatId']?.toString() ??
+          json['conversationId']?.toString() ??
+          json['chat_id']?.toString() ??
+          '',
       senderId: json['senderId']?.toString() ?? json['from']?.toString() ?? '',
       content: text,
       createdAt: DateTime.tryParse(
-            json['createdAt'] as String? ??
-                json['sentAt'] as String? ??
-                json['timestamp'] as String? ??
-                '',
-          ) ??
+        json['createdAt'] as String? ??
+            json['sentAt'] as String? ??
+            json['timestamp'] as String? ??
+            '',
+      ) ??
           DateTime.now(),
       isMine: json['isMine'] == true,
       status: json['status'] as String? ?? json['deliveryStatus'] as String?,
@@ -34,7 +37,8 @@ class Message {
       mediaUrl: json['mediaUrl'] as String? ?? json['media_url'] as String?,
       senderName: json['senderName'] as String? ?? json['sender_name'] as String?,
       senderAvatar: json['senderAvatar'] as String? ?? json['sender_avatar'] as String?,
-      readAt: DateTime.tryParse(json['readAt'] as String? ?? json['read_at'] as String? ?? ''),
+      readAt: DateTime.tryParse(
+          json['readAt'] as String? ?? json['read_at'] as String? ?? ''),
     );
   }
 

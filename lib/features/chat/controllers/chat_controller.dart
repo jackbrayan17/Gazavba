@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -7,16 +6,18 @@ import '../../../core/models/chat.dart';
 import '../../../core/models/message.dart';
 import '../../../core/services/socket_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/services/notification_service_provider.dart';
 import '../../../core/utils/exceptions.dart';
 import '../../../core/utils/result.dart';
 import '../../auth/controllers/auth_controller.dart';
 import '../data/chat_repository.dart';
 
 final chatControllerProvider =
-    StateNotifierProvider<ChatController, ChatState>((ref) {
+StateNotifierProvider<ChatController, ChatState>((ref) {
   final repository = ref.watch(chatRepositoryProvider);
   final socket = ref.watch(socketServiceProvider);
   final notificationService = ref.watch(notificationServiceProvider);
+
   final controller = ChatController(
     repository: repository,
     socketService: socket,
@@ -24,7 +25,7 @@ final chatControllerProvider =
   );
 
   ref.listen<AuthState>(authControllerProvider, (previous, next) {
-    unawaited(controller.onAuthStateChanged(previous, next));
+    controller.onAuthStateChanged(previous, next);
   });
 
   return controller;
@@ -80,8 +81,7 @@ class ChatController extends StateNotifier<ChatState> {
     required this.repository,
     required this.socketService,
     required this.notificationService,
-  })
-      : super(const ChatState());
+  }) : super(const ChatState());
 
   final ChatRepository repository;
   final SocketService socketService;
@@ -124,7 +124,7 @@ class ChatController extends StateNotifier<ChatState> {
       final map = Map<String, List<Message>>.from(state.messagesByChat);
       map[chatId] = messages;
       state = state.copyWith(messagesByChat: map, isLoading: false);
-      unawaited(repository.markChatAsRead(chatId));
+      repository.markChatAsRead(chatId);
       _logger.info('Fetched ${messages.length} messages for chat $chatId');
       return Success(messages);
     } on ApiException catch (error) {
@@ -171,13 +171,9 @@ class ChatController extends StateNotifier<ChatState> {
   void _handleSocketEvent(SocketEvent event) {
     switch (event.type) {
       case SocketEventType.connected:
-        if (_userId != null) {
-          socketService.joinUser(_userId!);
-        }
+        if (_userId != null) socketService.joinUser(_userId!);
         break;
       case SocketEventType.newMessage:
-        _handleIncomingMessage(event.data);
-        break;
       case SocketEventType.messageSent:
         _handleIncomingMessage(event.data);
         break;
@@ -236,13 +232,8 @@ class ChatController extends StateNotifier<ChatState> {
 
     final updatedChats = state.chats.map((chat) {
       if (chat.id == chatId) {
-        final shouldIncrement =
-            !message.isMine && state.activeChatId != chatId;
-        final unread = shouldIncrement
-            ? (chat.unreadCount + 1)
-            : message.isMine
-                ? chat.unreadCount
-                : 0;
+        final shouldIncrement = !message.isMine && state.activeChatId != chatId;
+        final unread = shouldIncrement ? (chat.unreadCount + 1) : message.isMine ? chat.unreadCount : 0;
         return chat.copyWith(
           lastMessage: message,
           updatedAt: DateTime.now(),
@@ -260,10 +251,8 @@ class ChatController extends StateNotifier<ChatState> {
       typingByChat: typingMap,
     );
 
-    final allMessages = updatedMap.values
-        .expand((messages) => messages)
-        .toList();
-    unawaited(notificationService.showLatestMessages(allMessages));
+    final allMessages = updatedMap.values.expand((messages) => messages).toList();
+    notificationService.showLatestMessages(allMessages);
   }
 
   void _handleTyping(dynamic data) {

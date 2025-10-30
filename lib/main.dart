@@ -8,6 +8,8 @@ import 'core/services/socket_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/storage/secure_storage.dart';
 import 'core/utils/provider_logger.dart';
+import 'core/services/notification_service_provider.dart';
+
 
 /// Entry point of the application.
 Future<void> main() async {

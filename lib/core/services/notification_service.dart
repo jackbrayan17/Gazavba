@@ -1,131 +1,57 @@
-import 'dart:async';
-
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
-
-import '../models/message.dart';
-
-final notificationServiceProvider = Provider<NotificationService>((ref) {
-  throw UnimplementedError('NotificationService must be initialised');
-});
+import '../models/message.dart' as app;
 
 class NotificationService {
-  NotificationService();
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+  FlutterLocalNotificationsPlugin();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
-  bool _initialised = false;
-  DateTime? _lastSync;
-
+  /// Initialise the notification plugin
   Future<void> initialise() async {
-    if (_initialised) {
-      return;
-    }
+    const AndroidInitializationSettings androidInit =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initSettings =
+    InitializationSettings(android: androidInit);
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    );
-
-    final settings = const InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
-
-    await _plugin.initialize(settings);
-    await _ensurePermissions();
-    _initialised = true;
+    await flutterLocalNotificationsPlugin.initialize(initSettings);
   }
 
-  Future<void> _ensurePermissions() async {
-    if (await Permission.notification.isGranted) {
-      return;
-    }
-    final status = await Permission.notification.request();
-    if (status.isPermanentlyDenied) {
-      unawaited(openAppSettings());
-    }
-  }
-
-  Future<void> showLatestMessages(List<Message> messages) async {
-    if (!_initialised) {
-      return;
-    }
-
-    if (messages.isEmpty) {
-      await _plugin.cancel(_NotificationChannels.messagesId);
-      return;
-    }
+  /// Show latest messages as inbox-style notification
+  Future<void> showLatestMessages(List<app.Message> messages) async {
+    if (messages.isEmpty) return;
 
     messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final latest = messages.take(4).toList();
 
-    // Avoid spamming the notification shade if nothing changed.
-    final newestTimestamp = latest.first.createdAt;
-    if (_lastSync != null && !newestTimestamp.isAfter(_lastSync!)) {
-      return;
-    }
-    _lastSync = newestTimestamp;
+    final List<String> inboxLines = messages.map((message) {
+      final sender = (message.senderName?.isNotEmpty == true)
+          ? '${message.senderName}: '
+          : '';
 
-    final inboxLines = latest.map((message) {
-      final sender = message.senderName?.isNotEmpty == true ? '${message.senderName}: ' : '';
       if (message.messageType != 'text' && message.mediaUrl != null) {
-        switch (message.messageType) {
-          case 'image':
-            return '${sender}📷 Photo';
-          case 'video':
-            return '${sender}🎬 Vidéo';
-          case 'audio':
-            return '${sender}🎧 Audio';
-          case 'file':
-            return '${sender}📎 Fichier';
-          default:
-            return '${sender}${message.messageType.toUpperCase()}';
-        }
+        return '$sender${message.messageType.toUpperCase()}';
       }
-      final content = message.content.trim();
-      if (content.isEmpty) {
-        return '${sender}Message sécurisé';
-      }
-      return '$sender$content';
+
+      return '$sender${message.content.trim()}';
     }).toList();
 
-    final android = AndroidNotificationDetails(
-      _NotificationChannels.messagesChannel,
-      'Messages Gazavba',
-      channelDescription: 'Résumé des derniers messages sécurisés',
-      importance: Importance.max,
-      priority: Priority.high,
+    final AndroidNotificationDetails androidDetails =
+    AndroidNotificationDetails(
+      'messages_channel',
+      'Messages',
       styleInformation: InboxStyleInformation(
         inboxLines,
-        summaryText: '${latest.length} derniers messages',
-        contentTitle: 'Gazavba',
+        contentTitle: 'New messages',
+        summaryText: '${messages.length} new messages',
       ),
-      ticker: 'Nouveaux messages Gazavba',
-      enableVibration: true,
-      playSound: true,
     );
 
-    final ios = const DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: false,
-      presentSound: true,
-    );
+    final NotificationDetails notificationDetails =
+    NotificationDetails(android: androidDetails);
 
-    final details = NotificationDetails(android: android, iOS: ios);
-    await _plugin.show(
-      _NotificationChannels.messagesId,
-      'Gazavba',
-      'Vous avez des messages récents',
-      details,
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Messages',
+      'You have ${messages.length} new messages',
+      notificationDetails,
     );
   }
-}
-
-class _NotificationChannels {
-  static const messagesChannel = 'gazavba_messages_channel';
-  static const messagesId = 1001;
 }

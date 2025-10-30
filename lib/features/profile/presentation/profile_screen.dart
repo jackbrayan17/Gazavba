@@ -313,10 +313,10 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
               CircleAvatar(
                 radius: 34,
                 backgroundImage: _previewBytes != null
-                    ? MemoryImage(_previewBytes!)
+                    ? MemoryImage(_previewBytes!) as ImageProvider<Object>
                     : widget.user.avatarUrl != null
-                        ? NetworkImage(widget.user.avatarUrl!)
-                        : null,
+                    ? NetworkImage(widget.user.avatarUrl!) as ImageProvider<Object>
+                    : null,
                 child: widget.user.avatarUrl == null && _previewBytes == null
                     ? Text(
                         widget.user.name.isNotEmpty
