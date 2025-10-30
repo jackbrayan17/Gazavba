@@ -67,8 +67,8 @@ class ApiClient {
     );
   }
 
-  static const _defaultBaseUrl = 'https://gazavba.eeuez.com/api';
-  static const _defaultSocketUrl = 'https://gazavba.eeuez.com';
+  static const _defaultBaseUrl = 'https://www.gazavba.eeuez.com/api/';
+  static const _defaultSocketUrl = 'https://www.gazavba.eeuez.com/';
 
   final AppSecureStorage _storage;
   late final Dio _dio;

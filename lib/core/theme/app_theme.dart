@@ -62,7 +62,6 @@ class AppTheme {
   );
 
   static ThemeData get light => _buildTheme(_lightColors, Brightness.light);
-
   static ThemeData get dark => _buildTheme(_darkColors, Brightness.dark);
 
   static ThemeData _buildTheme(ColorScheme colors, Brightness brightness) {
@@ -79,8 +78,7 @@ class AppTheme {
     );
 
     return base.copyWith(
-      scaffoldBackgroundColor:
-          brightness == Brightness.dark ? colors.background : colors.background,
+      scaffoldBackgroundColor: colors.background,
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: colors.surface,
@@ -98,15 +96,15 @@ class AppTheme {
         backgroundColor: colors.surface,
         indicatorColor: colors.secondary.withOpacity(0.18),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        iconTheme: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
+        iconTheme: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
             return IconThemeData(color: colors.primary);
           }
           return IconThemeData(color: colors.onSurfaceVariant);
         }),
-        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        labelTextStyle: MaterialStateProperty.resolveWith((states) {
           final style = textTheme.labelMedium;
-          if (states.contains(WidgetState.selected)) {
+          if (states.contains(MaterialState.selected)) {
             return style?.copyWith(
               color: colors.primary,
               fontWeight: FontWeight.w600,
@@ -115,9 +113,11 @@ class AppTheme {
           return style?.copyWith(color: colors.onSurfaceVariant);
         }),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: colors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
         elevation: brightness == Brightness.dark ? 0 : 2,
         margin: EdgeInsets.zero,
       ),
@@ -130,15 +130,19 @@ class AppTheme {
           backgroundColor: colors.primary,
           foregroundColor: colors.onPrimary,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          textStyle:
+          textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          textStyle:
+          textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -170,7 +174,7 @@ class AppTheme {
           borderSide: BorderSide(color: colors.primary),
         ),
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         hintStyle: textTheme.bodyMedium?.copyWith(
           color: colors.onSurfaceVariant,
         ),
@@ -181,22 +185,21 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: colors.surface,
-        contentTextStyle: textTheme.bodyMedium?.copyWith(
-          color: colors.onSurface,
-        ),
+        contentTextStyle:
+        textTheme.bodyMedium?.copyWith(color: colors.onSurface),
         actionTextColor: colors.secondary,
         elevation: 4,
         behavior: SnackBarBehavior.floating,
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
+        thumbColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
             return colors.secondary;
           }
           return colors.outlineVariant;
         }),
-        trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
+        trackColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
             return colors.secondary.withOpacity(0.35);
           }
           return colors.outline.withOpacity(0.2);
