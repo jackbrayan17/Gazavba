@@ -94,8 +94,6 @@ class ChatController extends StateNotifier<ChatState> {
   final Logger _logger = Logger('ChatController');
   String? _userId;
   final Random _random = Random();
-  Timer? _realtimeTimer;
-  bool _realtimeSyncInProgress = false;
 
   Future<void> onAuthStateChanged(AuthState? previous, AuthState next) async {
     if (next.isAuthenticated) {
@@ -107,7 +105,6 @@ class ChatController extends StateNotifier<ChatState> {
       _userId = null;
       _socketSubscription?.cancel();
       _socketSubscription = null;
-      _stopRealtimeSync();
       await socketService.disconnect();
       state = const ChatState();
     }
@@ -145,7 +142,6 @@ class ChatController extends StateNotifier<ChatState> {
     if (!mounted) return Failure(ApiException('Controller disposed'));
     state =
         state.copyWith(isLoading: true, clearError: true, activeChatId: chatId);
-    _startRealtimeSync(chatId);
     try {
       final messages = await repository.fetchMessages(chatId);
       if (!mounted) return Success(messages);
@@ -178,27 +174,45 @@ class ChatController extends StateNotifier<ChatState> {
     );
     _upsertMessage(chatId, pending);
     try {
-      final message =
-          await repository.sendMessage(chatId, content, clientId: clientId);
+      final ack = await socketService.emitWithAck('send_message', {
+        'chatId': chatId,
+        'text': content,
+        'clientId': clientId,
+      });
+      final payload = _extractMessagePayload(ack);
+      if (payload == null) throw ApiException('Empty response');
+      final message = Message.fromJson(payload);
       final mine = message.copyWith(
         isMine: true,
         status: message.status ?? 'sent',
         clientId: message.clientId ?? clientId,
       );
       _upsertMessage(chatId, mine);
-      socketService.emit('send_message', {
-        'chatId': chatId,
-        'senderId': _userId,
-        'text': content,
-        'messageType': message.messageType,
-        'clientId': clientId,
-      });
-      _logger.fine('Message sent to chat $chatId');
-      return Success(message);
+      _logger.fine('Message sent to chat $chatId via socket');
+      return Success(mine);
     } on ApiException catch (error) {
       _upsertMessage(chatId, pending.copyWith(status: 'not_sent'));
       _logger.warning('Failed to send message: ${error.message}');
       return Failure(error);
+    } catch (error) {
+      // Fallback HTTP if socket fails
+      try {
+        final message =
+            await repository.sendMessage(chatId, content, clientId: clientId);
+        final mine = message.copyWith(
+          isMine: true,
+          status: message.status ?? 'sent',
+          clientId: message.clientId ?? clientId,
+        );
+        _upsertMessage(chatId, mine);
+        _logger.fine('Message sent to chat $chatId via HTTP fallback');
+        return Success(mine);
+      } catch (error2) {
+        _upsertMessage(chatId, pending.copyWith(status: 'not_sent'));
+        _logger.warning('Failed to send message via socket/HTTP: $error2');
+        return Failure(
+            error2 is ApiException ? error2 : ApiException(error2.toString()));
+      }
     }
   }
 
@@ -207,6 +221,7 @@ class ChatController extends StateNotifier<ChatState> {
     XFile file, {
     String messageType = 'image',
   }) async {
+    String? mediaUrl;
     final clientId = _generateClientId();
     final pending = Message(
       id: clientId,
@@ -221,36 +236,55 @@ class ChatController extends StateNotifier<ChatState> {
     );
     _upsertMessage(chatId, pending);
     try {
-      final mediaUrl = await repository.uploadFile(file);
-      final message = await repository.sendMessage(
-        chatId,
-        '',
-        clientId: clientId,
-        mediaUrl: mediaUrl,
-        messageType: messageType,
-        mediaName: file.name,
-      );
-      final mine = message.copyWith(
-        isMine: true,
-        status: message.status ?? 'sent',
-        clientId: message.clientId ?? clientId,
-      );
-      _upsertMessage(chatId, mine);
-      socketService.emit('send_message', {
+      mediaUrl = await repository.uploadFile(file);
+      final ack = await socketService.emitWithAck('send_message', {
         'chatId': chatId,
-        'senderId': _userId,
         'text': null,
         'messageType': messageType,
         'mediaUrl': mediaUrl,
         'mediaName': file.name,
         'clientId': clientId,
       });
-      _logger.fine('Media message sent to chat $chatId');
-      return Success(message);
+      final payload = _extractMessagePayload(ack);
+      if (payload == null) throw ApiException('Empty response');
+      final message = Message.fromJson(payload);
+      final mine = message.copyWith(
+        isMine: true,
+        status: message.status ?? 'sent',
+        clientId: message.clientId ?? clientId,
+      );
+      _upsertMessage(chatId, mine);
+      _logger.fine('Media message sent to chat $chatId via socket');
+      return Success(mine);
     } on ApiException catch (error) {
       _upsertMessage(chatId, pending.copyWith(status: 'not_sent'));
       _logger.warning('Failed to send media: ${error.message}');
       return Failure(error);
+    } catch (error) {
+      try {
+        final message = await repository.sendMessage(
+          chatId,
+          '',
+          clientId: clientId,
+          mediaUrl: mediaUrl,
+          messageType: messageType,
+          mediaName: file.name,
+        );
+        final mine = message.copyWith(
+          isMine: true,
+          status: message.status ?? 'sent',
+          clientId: message.clientId ?? clientId,
+        );
+        _upsertMessage(chatId, mine);
+        _logger.fine('Media message sent to chat $chatId via HTTP fallback');
+        return Success(mine);
+      } catch (error2) {
+        _upsertMessage(chatId, pending.copyWith(status: 'not_sent'));
+        _logger.warning('Failed to send media via socket/HTTP: $error2');
+        return Failure(error2 is ApiException
+            ? error2
+            : ApiException(error2.toString()));
+      }
     }
   }
 
@@ -260,106 +294,93 @@ class ChatController extends StateNotifier<ChatState> {
     return '$now-$rand';
   }
 
-  void _startRealtimeSync(String chatId) {
-    _realtimeTimer?.cancel();
-    _realtimeTimer = Timer.periodic(
-        const Duration(seconds: 1), (_) => _syncActiveChat(chatId));
-  }
-
-  void _stopRealtimeSync() {
-    _realtimeTimer?.cancel();
-    _realtimeTimer = null;
-    _realtimeSyncInProgress = false;
-  }
-
-  Future<void> _syncActiveChat(String chatId) async {
-    if (_realtimeSyncInProgress || !mounted) return;
-    if (state.activeChatId != chatId) {
-      _stopRealtimeSync();
-      return;
+  Map<String, dynamic>? _extractMessagePayload(dynamic ack) {
+    if (ack is Map<String, dynamic>) {
+      if (ack['error'] != null) {
+        throw ApiException(ack['error'].toString());
+      }
+      if (ack['message'] is Map<String, dynamic>) {
+        return ack['message'] as Map<String, dynamic>;
+      }
+      return ack;
     }
-    _realtimeSyncInProgress = true;
+    return null;
+  }
+
+  Future<void> refreshChatOnce(String chatId) async {
+    if (!mounted || state.activeChatId != chatId) return;
+    _pingPresence();
+    var refreshedChats = state.chats;
     try {
-      _pingPresence();
-      var refreshedChats = state.chats;
-      try {
-        refreshedChats = await repository.fetchChats();
-      } catch (error) {
-        _logger.fine('Chat refresh skipped: $error');
-      }
-
-      final messages = await repository.fetchMessages(chatId);
-      if (!mounted || state.activeChatId != chatId) return;
-      final normalized = messages
-          .map(
-            (m) => m.copyWith(
-              isMine: m.senderId == _userId,
-              status: m.readAt != null
-                  ? 'read'
-                  : (m.status ?? (m.senderId == _userId ? 'sent' : m.status)),
-              clientId:
-                  (m.clientId ?? m.id).isNotEmpty ? m.clientId ?? m.id : m.id,
-            ),
-          )
-          .toList();
-
-      final existingLocal = state.messagesByChat[chatId] ?? const <Message>[];
-      for (final local in existingLocal) {
-        final exists = normalized.any(
-          (m) =>
-              m.id == local.id ||
-              (m.clientId != null &&
-                  local.clientId != null &&
-                  m.clientId == local.clientId),
-        );
-        final isOwn = local.isMine || local.senderId == _userId;
-        final isPending =
-            (local.status == 'pending' || local.status == 'not_sent');
-        if (!exists && isOwn && isPending) {
-          normalized.add(local);
-        }
-      }
-      normalized.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      final updatedMap = Map<String, List<Message>>.from(state.messagesByChat)
-        ..[chatId] = normalized;
-
-      final updatedChats = refreshedChats.map((chat) {
-        if (chat.id != chatId) return chat;
-        final latest =
-            normalized.isNotEmpty ? normalized.last : chat.lastMessage;
-        final unread = state.activeChatId == chatId ? 0 : chat.unreadCount;
-        return chat.copyWith(
-          lastMessage: latest ?? chat.lastMessage,
-          updatedAt: latest?.createdAt ?? chat.updatedAt,
-          unreadCount: unread,
-        );
-      }).toList();
-
-      final onlineUsers = Set<String>.from(state.onlineUserIds);
-      for (final chat in updatedChats) {
-        for (final user in chat.participants) {
-          if (user.isOnline) {
-            onlineUsers.add(user.id);
-          }
-        }
-      }
-
-      state = state.copyWith(
-        messagesByChat: updatedMap,
-        chats: updatedChats,
-        onlineUserIds: onlineUsers,
-      );
-    } catch (error, stack) {
-      _logger.fine('Realtime sync skipped: $error');
-      _logger.finest('Realtime sync stack: $stack');
-    } finally {
-      _realtimeSyncInProgress = false;
+      refreshedChats = await repository.fetchChats();
+    } catch (error) {
+      _logger.fine('Chat refresh skipped: $error');
     }
+
+    final messages = await repository.fetchMessages(chatId);
+    if (!mounted || state.activeChatId != chatId) return;
+    final normalized = messages
+        .map(
+          (m) => m.copyWith(
+            isMine: m.senderId == _userId,
+            status: m.readAt != null
+                ? 'read'
+                : (m.status ?? (m.senderId == _userId ? 'sent' : m.status)),
+            clientId:
+                (m.clientId ?? m.id).isNotEmpty ? m.clientId ?? m.id : m.id,
+          ),
+        )
+        .toList();
+
+    final existingLocal = state.messagesByChat[chatId] ?? const <Message>[];
+    for (final local in existingLocal) {
+      final exists = normalized.any(
+        (m) =>
+            m.id == local.id ||
+            (m.clientId != null &&
+                local.clientId != null &&
+                m.clientId == local.clientId),
+      );
+      final isOwn = local.isMine || local.senderId == _userId;
+      final isPending =
+          (local.status == 'pending' || local.status == 'not_sent');
+      if (!exists && isOwn && isPending) {
+        normalized.add(local);
+      }
+    }
+    normalized.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final updatedMap = Map<String, List<Message>>.from(state.messagesByChat)
+      ..[chatId] = normalized;
+
+    final updatedChats = refreshedChats.map((chat) {
+      if (chat.id != chatId) return chat;
+      final latest = normalized.isNotEmpty ? normalized.last : chat.lastMessage;
+      final unread = state.activeChatId == chatId ? 0 : chat.unreadCount;
+      return chat.copyWith(
+        lastMessage: latest ?? chat.lastMessage,
+        updatedAt: latest?.createdAt ?? chat.updatedAt,
+        unreadCount: unread,
+      );
+    }).toList();
+
+    final onlineUsers = Set<String>.from(state.onlineUserIds);
+    for (final chat in updatedChats) {
+      for (final user in chat.participants) {
+        if (user.isOnline) {
+          onlineUsers.add(user.id);
+        }
+      }
+    }
+
+    state = state.copyWith(
+      messagesByChat: updatedMap,
+      chats: updatedChats,
+      onlineUserIds: onlineUsers,
+    );
   }
 
   void stopRealtimeForChat(String chatId) {
     if (state.activeChatId == chatId) {
-      _stopRealtimeSync();
       state = state.copyWith(activeChatId: null);
     }
   }
@@ -389,6 +410,9 @@ class ChatController extends StateNotifier<ChatState> {
     switch (event.type) {
       case SocketEventType.connected:
         if (_userId != null) socketService.joinUser(_userId!);
+        if (state.activeChatId != null) {
+          refreshChatOnce(state.activeChatId!);
+        }
         break;
       case SocketEventType.newMessage:
       case SocketEventType.messageSent:
@@ -725,7 +749,6 @@ class ChatController extends StateNotifier<ChatState> {
   @override
   void dispose() {
     _socketSubscription?.cancel();
-    _stopRealtimeSync();
     super.dispose();
   }
 }

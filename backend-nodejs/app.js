@@ -2,9 +2,12 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const Redis = require('ioredis');
+const { createAdapter } = require('@socket.io/redis-adapter');
 require('dotenv').config();
 
 // === INIT DB & SEED ===
@@ -25,6 +28,14 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || '')
 const IO_CORS_ORIGIN = process.env.IO_CORS_ORIGIN || '';
 const SUPPORT_TOKEN = process.env.SUPPORT_CHAT_TOKEN || 'gazavba_support_chat';
 let SUPPORT_CHAT_UUID = null;
+let { JWT_SECRET } = (() => {
+  try { return require('./config/auth'); }
+  catch { return {}; }
+})();
+JWT_SECRET = JWT_SECRET || process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is required (set env JWT_SECRET)');
+}
 
 /* ==================== CONFIG ==================== */
 const UPLOAD_PATH = path.resolve(process.cwd(), process.env.UPLOAD_PATH || 'uploads');
@@ -69,6 +80,68 @@ const io = socketIo(server, {
   pingInterval: 25000,
   maxHttpBufferSize: 25 * 1024 * 1024,
 });
+
+/* ==================== REDIS ADAPTER + PRESENCE ==================== */
+const redisUrl = process.env.UPSTASH_REDIS_URL
+  || process.env.REDIS_URL
+  || (process.env.REDIS_HOST
+    ? `redis://:${process.env.REDIS_PASS || ''}@${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}`
+    : null);
+
+let redisPub = null;
+let redisSub = null;
+if (redisUrl) {
+  redisPub = new Redis(redisUrl, {
+    tls: process.env.UPSTASH_REDIS_URL ? { rejectUnauthorized: false } : undefined,
+  });
+  redisSub = redisPub.duplicate();
+  io.adapter(createAdapter(redisPub, redisSub));
+  console.log('[SocketIO] Redis adapter initialised for app.js');
+} else {
+  console.warn('[SocketIO] WARNING: no Redis URL provided, WS will not scale horizontally.');
+}
+
+const PRESENCE_TTL_SECONDS = Number(process.env.PRESENCE_TTL_SECONDS || 45);
+const PRESENCE_FLUSH_INTERVAL_MS = Number(process.env.PRESENCE_FLUSH_INTERVAL_MS || 60000);
+const presenceKey = (userId) => `presence:${userId}`;
+const lastPresenceWrite = new Map();
+
+const markPresence = async (userId, isOnline = true) => {
+  if (redisPub && userId) {
+    if (isOnline) {
+      await redisPub.set(presenceKey(userId), '1', 'EX', PRESENCE_TTL_SECONDS);
+    } else {
+      await redisPub.del(presenceKey(userId));
+    }
+  }
+};
+
+const flushPresenceToDb = async (userId, isOnline) => {
+  const now = Date.now();
+  const last = lastPresenceWrite.get(userId) || 0;
+  if (isOnline && now - last < PRESENCE_FLUSH_INTERVAL_MS) return;
+  await User.setOnlineStatus(userId, isOnline);
+  lastPresenceWrite.set(userId, now);
+};
+
+const broadcastPresence = async (userId, isOnline) => {
+  await markPresence(userId, isOnline);
+  await flushPresenceToDb(userId, isOnline);
+  const user = await User.getById(userId);
+  io.emit('user_presence', {
+    userId,
+    isOnline,
+    lastSeen: user?.lastSeen,
+  });
+};
+
+const isUserOnline = async (userId) => {
+  if (redisPub) {
+    const val = await redisPub.get(presenceKey(userId));
+    return val !== null;
+  }
+  return false;
+};
 
 /* ==================== MIDDLEWARE ==================== */
 app.use(cors(corsOptions));
@@ -118,38 +191,55 @@ async function ensureSupportChat() {
 }
 
 /* ==================== PRESENCE & SOCKET.IO ==================== */
-const activeSockets = new Map(); // userId → Set<socket.id>
-const PRESENCE_TTL = 30;
-
-const broadcastOnlineUsers = async () => {
-  const online = Array.from(activeSockets.keys());
-  await cache.set('online_users', online, PRESENCE_TTL);
-  io.emit('users_online', { userIds: online });
-};
-
-const setPresence = async (userId, online) => {
-  if (!userId) return;
-  try {
-    await User.setOnlineStatus(userId, online);
-    const user = await User.getById(userId);
-    io.emit('user_presence', {
-      userId,
-      isOnline: online,
-      lastSeen: user?.lastSeen,
-    });
-  } catch (e) {
-    console.error('Presence error:', e);
+const activeSockets = new Map(); // userId -> Set<socket.id>
+const WS_RATE_WINDOW_MS = Number(process.env.SOCKET_RATE_LIMIT_WINDOW_MS || 10000);
+const WS_RATE_MAX = Number(process.env.SOCKET_RATE_LIMIT_MAX || 60);
+const wsRateCounters = new Map();
+const isRateLimited = (userId) => {
+  if (!userId) return true;
+  const now = Date.now();
+  const entry = wsRateCounters.get(userId) || { count: 0, start: now };
+  if (now - entry.start > WS_RATE_WINDOW_MS) {
+    entry.count = 0;
+    entry.start = now;
   }
+  entry.count += 1;
+  wsRateCounters.set(userId, entry);
+  return entry.count > WS_RATE_MAX;
 };
+
+io.use(async (socket, next) => {
+  try {
+    const raw =
+      socket.handshake.auth?.token ||
+      socket.handshake.headers?.authorization ||
+      socket.handshake.query?.token;
+    const token = raw?.startsWith('Bearer ') ? raw.slice(7) : raw;
+    if (!token) return next(new Error('UNAUTHORIZED'));
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId || decoded.id;
+    if (!userId) return next(new Error('UNAUTHORIZED'));
+
+    const user = await User.getById(userId);
+    if (!user) return next(new Error('USER_NOT_FOUND'));
+
+    socket.data.userId = userId;
+    socket.data.user = user;
+    await broadcastPresence(userId, true);
+    return next();
+  } catch (err) {
+    console.error('Socket auth error:', err.message);
+    return next(new Error('UNAUTHORIZED'));
+  }
+});
 
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id);
 
-  socket.on('join', async (payload) => {
-    const userId = String(payload?.userId || payload?.id || '');
+  socket.on('join', async () => {
+    const userId = socket.data.userId;
     if (!userId) return socket.emit('error', { message: 'Invalid user' });
-
-    socket.data.userId = userId;
     socket.join(`user_${userId}`);
 
     try {
@@ -166,8 +256,7 @@ io.on('connection', (socket) => {
     activeSockets.set(userId, set);
 
     if (wasOffline) {
-      await setPresence(userId, true);
-      await broadcastOnlineUsers();
+      await broadcastPresence(userId, true);
     }
 
     socket.emit('joined', {
@@ -178,14 +267,29 @@ io.on('connection', (socket) => {
   });
 
   /* ==================== MESSAGES ==================== */
-  socket.on('send_message', async (data) => {
-    const { chatId, text, messageType = 'text', mediaUrl, mediaName, clientId } = data;
-    const senderId = data.senderId || socket.data.userId;
-    if (!chatId || !senderId) return;
+  socket.on('send_message', async (data, ack) => {
+    const { chatId, text, messageType = 'text', mediaUrl, mediaName, clientId } = data || {};
+    const senderId = socket.data.userId;
+    if (!chatId || !senderId) {
+      const err = { error: 'Missing chatId or senderId' };
+      ack?.(err); socket.emit('message_error', err); return;
+    }
+    if (isRateLimited(senderId)) {
+      const err = { error: 'RATE_LIMITED' };
+      ack?.(err); socket.emit('message_error', err); return;
+    }
 
     const finalChatId = chatId === SUPPORT_TOKEN ? SUPPORT_CHAT_UUID : chatId;
 
     try {
+      const chat = await Chat.getById(finalChatId);
+      if (!chat) throw new Error('CHAT_NOT_FOUND');
+      if (chat.type === 'direct') {
+        if (![chat.user1Id, chat.user2Id].includes(senderId)) throw new Error('NOT_IN_CHAT');
+      } else if (!(await Chat.isParticipant(finalChatId, senderId))) {
+        throw new Error('NOT_IN_CHAT');
+      }
+
       const msg = await Message.create({
         chatId: finalChatId,
         senderId,
@@ -209,8 +313,24 @@ io.on('connection', (socket) => {
 
       socket.emit('message_sent', enriched);
       socket.to(`chat_${finalChatId}`).emit('message_new', enriched);
+      ack?.({ ok: true, message: enriched });
+
+      // Notify delivery if receiver online
+      if (msg.receiverId) {
+        const receiverId = String(msg.receiverId);
+        if (await isUserOnline(receiverId)) {
+          io.to(`user_${senderId}`).emit('message_delivered', {
+            messageId: msg.id,
+            chatId: finalChatId,
+            receiverId,
+            deliveredAt: new Date().toISOString(),
+          });
+        }
+      }
     } catch (e) {
-      socket.emit('message_error', { error: e.message });
+      const err = { error: e.message };
+      ack?.(err);
+      socket.emit('message_error', err);
     }
   });
 
@@ -298,10 +418,9 @@ io.on('connection', (socket) => {
         activeSockets.delete(userId);
         setTimeout(async () => {
           if (!activeSockets.has(userId)) {
-            await setPresence(userId, false);
-            await broadcastOnlineUsers();
+            await broadcastPresence(userId, false);
           }
-        }, PRESENCE_TTL * 1000);
+        }, PRESENCE_TTL_SECONDS * 1000);
       }
     }
   });
@@ -353,7 +472,7 @@ async function shutdown() {
     server.close(() => console.log('HTTP server closed.'));
     io.close(() => console.log('Socket.IO closed.'));
     for (const userId of activeSockets.keys()) {
-      await setPresence(userId, false);
+      await broadcastPresence(userId, false);
     }
     if (cache.quit) await cache.quit();
     console.log('Shutdown complete.');

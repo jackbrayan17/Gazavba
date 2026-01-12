@@ -10,10 +10,34 @@ const { all } = require('../config/database');
 
 let { JWT_SECRET } = (() => {
   try { return require('../config/auth'); }
-  catch { return { JWT_SECRET: process.env.JWT_SECRET || 'dev_secret_change_me' }; }
+  catch { return {}; }
 })();
+JWT_SECRET = JWT_SECRET || process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is required (set env JWT_SECRET)');
+}
 
 const router = express.Router();
+
+/* ---------- RATE LIMIT (simple in-memory) ---------- */
+const RATE_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 15_000);
+const RATE_MAX = Number(process.env.RATE_LIMIT_MAX || 60);
+const rateCounters = new Map();
+const rateLimit = (req, res, next) => {
+  const key = `${req.ip}:${req.userId || 'anon'}`;
+  const now = Date.now();
+  const entry = rateCounters.get(key) || { count: 0, start: now };
+  if (now - entry.start > RATE_WINDOW_MS) {
+    entry.count = 0;
+    entry.start = now;
+  }
+  entry.count += 1;
+  rateCounters.set(key, entry);
+  if (entry.count > RATE_MAX) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+  return next();
+};
 
 /* ---------- AUTH MIDDLEWARE ---------- */
 const authenticateToken = (req, res, next) => {
@@ -31,6 +55,7 @@ const authenticateToken = (req, res, next) => {
 };
 
 router.use(authenticateToken);
+router.use(rateLimit);
 
 /* ---------- UPLOAD CONFIG ---------- */
 const resolveUploadDir = (value) =>
@@ -76,6 +101,17 @@ async function userInChat(chatId, userId) {
   );
   return rows.length > 0;
 }
+
+const validateSendPayload = (body = {}) => {
+  const errors = [];
+  if (!body.chatId || typeof body.chatId !== 'string') errors.push('chatId is required');
+  if (!body.text && !body.mediaUrl) errors.push('text or mediaUrl is required');
+  if (body.text && typeof body.text !== 'string') errors.push('text must be string');
+  if (body.mediaUrl && typeof body.mediaUrl !== 'string') errors.push('mediaUrl must be string');
+  if (body.mediaName && typeof body.mediaName !== 'string') errors.push('mediaName must be string');
+  if (body.clientId && typeof body.clientId !== 'string') errors.push('clientId must be string');
+  return errors;
+};
 
 /* ---------- ROUTES ---------- */
 
@@ -127,8 +163,9 @@ router.get('/chat/:chatId', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     let { chatId, clientId, text, messageType = 'text', mediaUrl, mediaName } = req.body;
-    if (!chatId || (!text?.trim() && !mediaUrl)) {
-      return res.status(400).json({ error: 'chatId and (text or mediaUrl) required' });
+    const validationErrors = validateSendPayload({ chatId, text, mediaUrl, mediaName, clientId });
+    if (validationErrors.length) {
+      return res.status(400).json({ error: 'INVALID_PAYLOAD', details: validationErrors });
     }
 
     // Support chat token

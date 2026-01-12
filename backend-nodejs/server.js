@@ -4,13 +4,24 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const Redis = require('ioredis');
+const { createAdapter } = require('@socket.io/redis-adapter');
 const { initDatabase } = require('./config/database');
 const Chat = require('./models/Chat');
 const User = require('./models/User');
 const Message = require('./models/Message');
+let { JWT_SECRET } = (() => {
+  try { return require('./config/auth'); }
+  catch { return {}; }
+})();
+JWT_SECRET = JWT_SECRET || process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is required (set env JWT_SECRET)');
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -22,6 +33,78 @@ const io = socketIo(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+
+/* =========================
+   Redis adapter + presence
+========================= */
+const redisUrl = process.env.UPSTASH_REDIS_URL
+  || process.env.REDIS_URL
+  || (process.env.REDIS_HOST
+    ? `redis://:${process.env.REDIS_PASS || ''}@${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}`
+    : null);
+
+let redisPub = null;
+let redisSub = null;
+if (redisUrl) {
+  redisPub = new Redis(redisUrl, {
+    tls: process.env.UPSTASH_REDIS_URL ? { rejectUnauthorized: false } : undefined,
+  });
+  redisSub = redisPub.duplicate();
+  io.adapter(createAdapter(redisPub, redisSub));
+  console.log('[SocketIO] Redis adapter initialised');
+} else {
+  console.warn('[SocketIO] WARNING: no Redis URL provided, WS will not scale horizontally.');
+}
+
+const PRESENCE_TTL_SECONDS = Number(process.env.PRESENCE_TTL_SECONDS || 45);
+const PRESENCE_FLUSH_INTERVAL_MS = Number(process.env.PRESENCE_FLUSH_INTERVAL_MS || 60000);
+const presenceKey = (userId) => `presence:${userId}`;
+const lastPresenceWrite = new Map();
+
+const markPresence = async (userId, isOnline = true) => {
+  if (redisPub && userId) {
+    if (isOnline) {
+      await redisPub.set(presenceKey(userId), '1', 'EX', PRESENCE_TTL_SECONDS);
+    } else {
+      await redisPub.del(presenceKey(userId));
+    }
+  }
+};
+
+const flushPresenceToDb = async (userId, isOnline) => {
+  const now = Date.now();
+  const last = lastPresenceWrite.get(userId) || 0;
+  if (isOnline && now - last < PRESENCE_FLUSH_INTERVAL_MS) return;
+  await User.setOnlineStatus(userId, isOnline);
+  lastPresenceWrite.set(userId, now);
+};
+
+const broadcastPresence = async (userId, isOnline) => {
+  await markPresence(userId, isOnline);
+  await flushPresenceToDb(userId, isOnline);
+  const user = await User.getById(userId);
+  io.emit('user_presence', {
+    userId,
+    isOnline,
+    lastSeen: user?.lastSeen,
+  });
+};
+
+const WS_RATE_WINDOW_MS = Number(process.env.SOCKET_RATE_LIMIT_WINDOW_MS || 10_000);
+const WS_RATE_MAX = Number(process.env.SOCKET_RATE_LIMIT_MAX || 60);
+const wsRateCounters = new Map();
+const isRateLimited = (userId) => {
+  if (!userId) return true;
+  const now = Date.now();
+  const entry = wsRateCounters.get(userId) || { count: 0, start: now };
+  if (now - entry.start > WS_RATE_WINDOW_MS) {
+    entry.count = 0;
+    entry.start = now;
+  }
+  entry.count += 1;
+  wsRateCounters.set(userId, entry);
+  return entry.count > WS_RATE_MAX;
+};
 
 /* =========================
    Uploads directory
@@ -104,43 +187,12 @@ app.use('/api/wallet', walletRouter);
 /* =========================
    Socket.IO
 ========================= */
-const activeSockets = new Map();
-
-const setPresence = async (userId, isOnline) => {
-  if (!userId) return;
-  try {
-    await User.setOnlineStatus(userId, isOnline);
-    const user = await User.getById(userId);
-    io.emit('user_presence', {
-      userId,
-      isOnline,
-      lastSeen: user?.lastSeen,
-    });
-  } catch (error) {
-    console.error('Presence update error:', error);
+const isUserOnline = async (userId) => {
+  if (redisPub) {
+    const val = await redisPub.get(presenceKey(userId));
+    return val !== null;
   }
-};
-
-const addSocket = async (userId, socketId) => {
-  const set = activeSockets.get(userId) || new Set();
-  const wasOffline = set.size === 0;
-  set.add(socketId);
-  activeSockets.set(userId, set);
-  if (wasOffline) {
-    await setPresence(userId, true);
-  }
-};
-
-const removeSocket = async (userId, socketId) => {
-  const set = activeSockets.get(userId);
-  if (!set) return;
-  set.delete(socketId);
-  if (set.size === 0) {
-    activeSockets.delete(userId);
-    await setPresence(userId, false);
-  } else {
-    activeSockets.set(userId, set);
-  }
+  return false;
 };
 
 const joinUserRooms = async (socket, userId) => {
@@ -153,26 +205,57 @@ const joinUserRooms = async (socket, userId) => {
   }
 };
 
+io.use(async (socket, next) => {
+  try {
+    const raw =
+      socket.handshake.auth?.token ||
+      socket.handshake.headers?.authorization ||
+      socket.handshake.query?.token;
+    const token = raw?.startsWith('Bearer ') ? raw.slice(7) : raw;
+    if (!token) return next(new Error('UNAUTHORIZED'));
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId || decoded.id;
+    if (!userId) return next(new Error('UNAUTHORIZED'));
+
+    const user = await User.getById(userId);
+    if (!user) return next(new Error('USER_NOT_FOUND'));
+
+    socket.data.userId = userId;
+    socket.data.user = user;
+    await markPresence(userId, true);
+    return next();
+  } catch (err) {
+    console.error('Socket auth error:', err.message);
+    return next(new Error('UNAUTHORIZED'));
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   // Join user to their room
-  socket.on('join', async (payload) => {
-    const userId = String(payload?.userId || payload?.id || payload || '');
+  socket.on('join', async () => {
+    const userId = socket.data.userId;
     if (!userId) return socket.emit('error', { message: 'Invalid user' });
-    socket.data.userId = userId;
     await joinUserRooms(socket, userId);
-    await addSocket(userId, socket.id);
+    await broadcastPresence(userId, true);
     console.log(`User ${userId} joined their rooms`);
     socket.emit('joined', { userId });
   });
 
+  socket.on('heartbeat', async () => {
+    const userId = socket.data.userId;
+    if (!userId) return;
+    await broadcastPresence(userId, true);
+  });
+
   // Handle new message
-  socket.on('send_message', async (data) => {
+  socket.on('send_message', async (data, ack) => {
     try {
       const payload = data || {};
       const chatId = payload.chatId;
-      const senderId = payload.senderId || socket.data.userId;
+      const senderId = socket.data.userId;
       const text = payload.text;
       const messageType = payload.messageType || 'text';
       const mediaUrl = payload.mediaUrl || null;
@@ -180,12 +263,41 @@ io.on('connection', (socket) => {
       const clientId = payload.clientId || null;
 
       if (!chatId || !senderId) {
-        return socket.emit('message_error', { error: 'Missing chatId or senderId' });
+        const err = { error: 'Missing chatId or senderId' };
+        ack?.(err);
+        return socket.emit('message_error', err);
+      }
+
+      if (isRateLimited(senderId)) {
+        const err = { error: 'RATE_LIMITED' };
+        ack?.(err);
+        return socket.emit('message_error', err);
       }
 
       let existing = null;
       if (clientId) {
         existing = await Message.getByClientId(clientId);
+      }
+
+      const chat = await Chat.getById(chatId);
+      if (!chat) {
+        const err = { error: 'CHAT_NOT_FOUND' };
+        ack?.(err);
+        socket.emit('message_error', err);
+        return;
+      }
+      if (chat.type === 'direct') {
+        if (![chat.user1Id, chat.user2Id].includes(senderId)) {
+          const err = { error: 'NOT_IN_CHAT' };
+          ack?.(err);
+          socket.emit('message_error', err);
+          return;
+        }
+      } else if (!(await Chat.isParticipant(chatId, senderId))) {
+        const err = { error: 'NOT_IN_CHAT' };
+        ack?.(err);
+        socket.emit('message_error', err);
+        return;
       }
 
       const message = existing || await Message.create({
@@ -203,12 +315,14 @@ io.on('connection', (socket) => {
         io.to(`chat_${chatId}`).emit('message_new', message);
       }
 
-      socket.emit('message_sent', { ...message, chatId });
+      const payloadSent = { ...message, chatId };
+      socket.emit('message_sent', payloadSent);
+      ack?.({ ok: true, message: payloadSent });
 
       // Confirmer la livraison si le destinataire est connectÇ‰
       if (message.receiverId) {
         const receiverId = String(message.receiverId);
-        const isReceiverOnline = activeSockets.has(receiverId) && activeSockets.get(receiverId)?.size > 0;
+        const isReceiverOnline = await isUserOnline(receiverId);
         if (isReceiverOnline) {
           io.to(`user_${senderId}`).emit('message_delivered', {
             messageId: message.id,
@@ -220,7 +334,9 @@ io.on('connection', (socket) => {
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      socket.emit('message_error', { error: 'Failed to send message', clientId: data?.clientId });
+      const err = { error: 'Failed to send message', clientId: data?.clientId };
+      ack?.(err);
+      socket.emit('message_error', err);
     }
   });
 
@@ -245,11 +361,11 @@ io.on('connection', (socket) => {
   });
 
   // Online status
-  socket.on('user_online', async (payload) => {
+  socket.on('user_online', async () => {
     try {
-      const userId = String(payload?.userId || payload || socket.data.userId || '');
+      const userId = String(socket.data.userId || '');
       if (!userId) return;
-      await addSocket(userId, socket.id);
+      await broadcastPresence(userId, true);
     } catch (error) {
       console.error('Error updating online status:', error);
     }
@@ -259,7 +375,7 @@ io.on('connection', (socket) => {
     console.log('User disconnected:', socket.id);
     const userId = socket.data.userId;
     if (userId) {
-      await removeSocket(userId, socket.id);
+      await broadcastPresence(userId, false);
     }
   });
 });

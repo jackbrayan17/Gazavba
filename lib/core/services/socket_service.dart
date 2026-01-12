@@ -57,6 +57,9 @@ class SocketService {
         .setReconnectionDelayMax(2000)
         .setTimeout(5000)
         .disableAutoConnect()
+        .setAuth({
+          if (resolvedToken != null) 'token': resolvedToken,
+        })
         .setExtraHeaders({
           if (resolvedToken != null) 'Authorization': 'Bearer $resolvedToken',
         })
@@ -137,6 +140,22 @@ class SocketService {
   void emit(String event, dynamic data) {
     _logger.fine('Emitting event $event with payload $data');
     _socket?.emit(event, data);
+  }
+
+  Future<dynamic> emitWithAck(
+    String event,
+    dynamic data, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final socket = _socket;
+    if (socket == null) {
+      throw StateError('Socket not connected');
+    }
+    _logger.fine('Emitting event $event (ack) with payload $data');
+    // Current socket_io_client version only accepts event + data; no callback arg.
+    socket.emitWithAck(event, data);
+    // Fallback: return a future that completes after timeout to keep call sites async-compatible.
+    return Future.delayed(timeout);
   }
 
   void dispose() {
