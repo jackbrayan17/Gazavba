@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:logging/logging.dart';
 
 import '../../../core/models/user.dart';
@@ -27,13 +27,17 @@ class AuthRepository {
       data: {'phone': phone, 'password': password},
       auth: false,
     );
-    final token = payload['token'] as String?;
+    final token =
+        payload['token'] as String? ?? payload['accessToken'] as String?;
     if (token == null) {
       throw ApiException('Token manquant dans la réponse');
     }
     await _client.setToken(token);
-    final profile = payload['user'] as Map<String, dynamic>? ??
+    final profilePayload = payload['user'] as Map<String, dynamic>? ??
         await _client.get('/users/profile', auth: true);
+    final profile = profilePayload is Map<String, dynamic>
+        ? profilePayload['user'] as Map<String, dynamic>? ?? profilePayload
+        : <String, dynamic>{};
     return User.fromJson(profile);
   }
 
@@ -45,23 +49,35 @@ class AuthRepository {
     Uint8List? avatarBytes,
     String? avatarFileExtension,
   }) async {
+    MultipartFile? avatar;
+    if (avatarBytes != null) {
+      avatar = MultipartFile.fromBytes(
+        avatarBytes,
+        filename: 'avatar.${avatarFileExtension ?? 'jpg'}',
+      );
+    }
+    final formData = FormData.fromMap({
+      'phone': phone,
+      'password': password,
+      if (name != null) 'name': name,
+      if (email != null) 'email': email,
+      if (avatar != null) 'avatar': avatar,
+    });
     final payload = await _client.post(
       '/auth/register',
-      data: {
-        'phone': phone,
-        'password': password,
-        if (name != null) 'name': name,
-        if (email != null) 'email': email,
-        if (avatarBytes != null) 'avatar': avatarBytes,
-      },
+      formData: formData,
       auth: false,
     );
-    final token = payload['token'] as String?;
+    final token =
+        payload['token'] as String? ?? payload['accessToken'] as String?;
     if (token != null) {
       await _client.setToken(token);
     }
-    final profile = payload['user'] as Map<String, dynamic>? ??
+    final profilePayload = payload['user'] as Map<String, dynamic>? ??
         await _client.get('/users/profile', auth: true);
+    final profile = profilePayload is Map<String, dynamic>
+        ? profilePayload['user'] as Map<String, dynamic>? ?? profilePayload
+        : <String, dynamic>{};
     final user = User.fromJson(profile);
 
     if (email != null && email.isNotEmpty && _supabaseService.isConfigured) {
@@ -92,7 +108,8 @@ class AuthRepository {
   }
 
   Future<User> refreshProfile() async {
-    final profile = await _client.get('/users/profile', auth: true);
+    final payload = await _client.get('/users/profile', auth: true);
+    final profile = payload['user'] as Map<String, dynamic>? ?? payload;
     return User.fromJson(profile);
   }
 

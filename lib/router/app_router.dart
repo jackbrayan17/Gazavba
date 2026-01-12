@@ -13,6 +13,7 @@ import '../features/auth/presentation/register_draft.dart';
 import '../core/models/chat.dart';
 import '../features/chat/presentation/chat_detail_screen.dart';
 import '../features/chat/presentation/chats_screen.dart';
+import '../features/chat/presentation/settings_screen.dart';
 import '../features/contacts/presentation/contacts_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/status/presentation/status_screen.dart';
@@ -87,7 +88,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final phone = draft?.phone ?? state.uri.queryParameters['phone'];
           final password = draft?.password;
           return ProfileSetupScreen(
-            draft: draft ?? RegisterDraft(phone: phone ?? '', password: password ?? ''),
+            draft: draft ??
+                RegisterDraft(phone: phone ?? '', password: password ?? ''),
           );
         },
       ),
@@ -107,9 +109,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   // The 'title' will now be passed via `extra`, not `queryParameters`
                   final extraData = state.extra as Map<String, dynamic>?;
                   final title = extraData?['title'] as String?;
-                  final chat = extraData?['chat'] is Chat ? extraData!['chat'] as Chat : null;
+                  final chat = extraData?['chat'] is Chat
+                      ? extraData!['chat'] as Chat
+                      : null;
 
-                  return ChatDetailScreen(chatId: chatId, title: title, initialChat: chat);
+                  return ChatDetailScreen(
+                      chatId: chatId, title: title, initialChat: chat);
                 },
               ),
             ],
@@ -130,6 +135,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/home/profile',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: ProfileScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/home/settings',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: SettingsScreen(),
             ),
           ),
         ],

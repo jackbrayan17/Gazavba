@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 
+import '../utils/url_utils.dart';
 import 'message.dart';
 import 'user.dart';
 
@@ -22,9 +23,9 @@ class Chat {
     return Chat(
       id: json['id'].toString(),
       title: (json['displayName'] ??
-              json['title'] ??
-              json['name'] ??
-              'Conversation') as String,
+          json['title'] ??
+          json['name'] ??
+          'Conversation') as String,
       participants: participantsJson
           .map((item) => User.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -40,7 +41,9 @@ class Chat {
           : null,
       unreadCount: _asInt(json['unreadCount'] ?? json['unread_count']),
       isMuted: json['isMuted'] == true,
-      avatar: json['avatar'] as String? ?? json['avatarUrl'] as String?,
+      avatar: UrlUtils.resolveMediaUrl(
+        json['avatar'] as String? ?? json['avatarUrl'] as String?,
+      ),
       type: json['type'] as String? ?? json['chatType'] as String?,
     );
   }

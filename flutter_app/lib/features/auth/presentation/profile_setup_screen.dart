@@ -123,7 +123,9 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                             labelText: 'Adresse e-mail (optionnel)',
                           ),
                           validator: (value) {
-                            if (value != null && value.isNotEmpty && !value.contains('@')) {
+                            if (value != null &&
+                                value.isNotEmpty &&
+                                !value.contains('@')) {
                               return 'Adresse e-mail invalide';
                             }
                             return null;
@@ -137,7 +139,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                               : SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton.icon(
-                                    icon: const Icon(Icons.check_circle_outline),
+                                    icon:
+                                        const Icon(Icons.check_circle_outline),
                                     onPressed: _complete,
                                     label: const Text('Terminer et rejoindre'),
                                   ),

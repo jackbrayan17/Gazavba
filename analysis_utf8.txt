@@ -1,0 +1,191 @@
+﻿Analyzing Gazavba...                                            
+
+warning - Unused import: 'package:go_router/go_router.dart' - flutter_app\lib\app.dart:3:8 - unused_import
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\app.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\app.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\core\database\app_database.dart:9:8 - always_use_package_imports
+   info - Unnecessary use of double quotes - flutter_app\lib\core\database\app_database.dart:271:11 - prefer_single_quotes
+   info - Unnecessary use of double quotes - flutter_app\lib\core\database\app_database.dart:293:11 - prefer_single_quotes
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\core\models\chat.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\core\models\chat.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\core\services\api_client.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\core\services\api_client.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\core\services\api_client.dart:7:8 - always_use_package_imports
+warning - The '!' will have no effect because the receiver can't be null - flutter_app\lib\core\storage\secure_storage.dart:44:27 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - flutter_app\lib\core\storage\secure_storage.dart:51:41 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - flutter_app\lib\core\storage\secure_storage.dart:61:27 - unnecessary_non_null_assertion
+   info - 'background' is deprecated and shouldn't be used. Use surface instead. This feature was deprecated after v3.18.0-0.1.pre - flutter_app\lib\core\theme\app_theme.dart:20:39 - deprecated_member_use
+   info - 'onBackground' is deprecated and shouldn't be used. Use onSurface instead. This feature was deprecated after v3.18.0-0.1.pre - flutter_app\lib\core\theme\app_theme.dart:21:39 - deprecated_member_use
+   info - Parameter 'message' could be a super parameter - flutter_app\lib\core\utils\exceptions.dart:12:3 - use_super_parameters
+   info - The member 'error' overrides an inherited member but isn't annotated with '@override' - flutter_app\lib\core\utils\result.dart:20:16 - annotate_overrides
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\controllers\auth_controller.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\controllers\auth_controller.dart:7:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\controllers\auth_controller.dart:8:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\controllers\auth_controller.dart:9:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\controllers\auth_controller.dart:10:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\data\auth_repository.dart:7:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\data\auth_repository.dart:8:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\data\auth_repository.dart:9:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\data\auth_repository.dart:10:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\presentation\login_screen.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\presentation\profile_setup_screen.dart:8:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\presentation\profile_setup_screen.dart:9:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\auth\presentation\register_screen.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\controllers\chat_controller.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\controllers\chat_controller.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\controllers\chat_controller.dart:7:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\controllers\chat_controller.dart:8:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\controllers\chat_controller.dart:9:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\controllers\chat_controller.dart:10:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\controllers\chat_controller.dart:11:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\data\chat_repository.dart:3:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\data\chat_repository.dart:4:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\data\chat_repository.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\data\chat_repository.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:7:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:8:8 - always_use_package_imports
+  error - The argument type 'Object?' can't be assigned to the parameter type 'ImageProvider<Object>?'.  - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:88:34 - argument_type_not_assignable
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:215:72 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:232:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - flutter_app\lib\features\chat\presentation\chat_detail_screen.dart:250:36 - deprecated_member_use
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chats_screen.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chats_screen.dart:7:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chats_screen.dart:8:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chats_screen.dart:9:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\chat\presentation\chats_screen.dart:10:8 - always_use_package_imports
+  error - The named parameter 'queryParameters' isn't defined - flutter_app\lib\features\chat\presentation\chats_screen.dart:132:9 - undefined_named_parameter
+  error - The argument type 'Object?' can't be assigned to the parameter type 'ImageProvider<Object>?'.  - flutter_app\lib\features\chat\presentation\chats_screen.dart:142:34 - argument_type_not_assignable
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - flutter_app\lib\features\chat\presentation\chats_screen.dart:269:47 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - flutter_app\lib\features\chat\presentation\chats_screen.dart:269:62 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - flutter_app\lib\features\chat\presentation\chats_screen.dart:270:47 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - flutter_app\lib\features\chat\presentation\chats_screen.dart:270:62 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - flutter_app\lib\features\chat\presentation\chats_screen.dart:271:47 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - flutter_app\lib\features\chat\presentation\chats_screen.dart:271:62 - deprecated_member_use
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\profile\presentation\profile_screen.dart:5:8 - always_use_package_imports
+  error - The argument type 'Object?' can't be assigned to the parameter type 'ImageProvider<Object>?'.  - flutter_app\lib\features\profile\presentation\profile_screen.dart:58:34 - argument_type_not_assignable
+   info - Use 'const' with the constructor to improve performance - flutter_app\lib\features\profile\presentation\profile_screen.dart:83:11 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - flutter_app\lib\features\profile\presentation\profile_screen.dart:88:11 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - flutter_app\lib\features\profile\presentation\profile_screen.dart:93:11 - prefer_const_constructors
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\features\status\presentation\status_screen.dart:4:8 - always_use_package_imports
+  error - The argument type 'Object?' can't be assigned to the parameter type 'ImageProvider<Object>?'.  - flutter_app\lib\features\status\presentation\status_screen.dart:39:34 - argument_type_not_assignable
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\main.dart:4:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\main.dart:5:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\main.dart:6:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\main.dart:7:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\main.dart:8:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\main.dart:9:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\main.dart:10:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:7:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:8:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:9:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:10:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:11:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:12:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:13:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:14:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:15:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:16:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:17:8 - always_use_package_imports
+   info - Use 'package:' imports for files in the 'lib' directory - flutter_app\lib\router\app_router.dart:18:8 - always_use_package_imports
+  error - The function 'GoRouterRefreshStream' isn't defined - flutter_app\lib\router\app_router.dart:26:24 - undefined_function
+  error - The getter 'location' isn't defined for the type 'GoRouter' - flutter_app\lib\widgets\home_shell.dart:27:29 - undefined_getter
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - flutter_app\lib\widgets\splash_screen.dart:53:68 - deprecated_member_use
+warning - Unused import: 'package:go_router/go_router.dart' - lib\app.dart:3:8 - unused_import
+  error - Target of URI doesn't exist: 'core/providers/notification_provider.dart' - lib\core\providers\notification_provider.dart:3:8 - uri_does_not_exist
+  error - The method 'NotificationService' isn't defined for the type '_MyAppState' - lib\core\providers\notification_provider.dart:17:31 - undefined_method
+   info - Use 'const' for final variables initialized to a constant value - lib\core\services\api_client.dart:21:5 - prefer_const_declarations
+   info - Use 'const' for final variables initialized to a constant value - lib\core\services\api_client.dart:22:5 - prefer_const_declarations
+warning - The '!' will have no effect because the receiver can't be null - lib\core\storage\secure_storage.dart:59:27 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\core\storage\secure_storage.dart:66:41 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\core\storage\secure_storage.dart:76:27 - unnecessary_non_null_assertion
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\core\theme\app_theme.dart:30:5 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\core\theme\app_theme.dart:56:5 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:102:40 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\core\theme\app_theme.dart:164:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:165:39 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\core\theme\app_theme.dart:171:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:171:37 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\core\theme\app_theme.dart:172:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:175:56 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:188:31 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:208:35 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:210:33 - deprecated_member_use
+   info - Parameter 'message' could be a super parameter - lib\core\utils\exceptions.dart:12:3 - use_super_parameters
+   info - The member 'error' overrides an inherited member but isn't annotated with '@override' - lib\core\utils\result.dart:20:16 - annotate_overrides
+warning - The '!' will have no effect because the receiver can't be null - lib\features\chat\controllers\chat_controller.dart:222:49 - unnecessary_non_null_assertion
+  error - Arguments of a constant creation must be constant expressions - lib\features\chat\presentation\calls_screen.dart:63:27 - const_with_non_constant_argument
+  error - The getter 'add_call_rounded' isn't defined for the type 'Icons' - lib\features\chat\presentation\calls_screen.dart:63:33 - undefined_getter
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\chat\presentation\chat_detail_screen.dart:324:60 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chat_detail_screen.dart:376:43 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chat_detail_screen.dart:392:48 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chat_detail_screen.dart:428:50 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chat_detail_screen.dart:522:29 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chat_detail_screen.dart:527:25 - deprecated_member_use
+warning - Unused import: 'package:go_router/go_router.dart' - lib\features\chat\presentation\chat_info_screen.dart:3:8 - unused_import
+   info - The private field _disappearingMessages could be 'final' - lib\features\chat\presentation\chat_info_screen.dart:17:10 - prefer_final_fields
+   info - The import of 'package:characters/characters.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart' - lib\features\chat\presentation\chats_screen.dart:5:8 - unnecessary_import
+   info - The imported package 'characters' isn't a dependency of the importing package - lib\features\chat\presentation\chats_screen.dart:5:8 - depend_on_referenced_packages
+  error - The named parameter 'nestedScrollView' isn't defined - lib\features\chat\presentation\chats_screen.dart:69:7 - undefined_named_parameter
+  error - The getter 'add_call_rounded' isn't defined for the type 'Icons' - lib\features\chat\presentation\chats_screen.dart:189:27 - undefined_getter
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\chat\presentation\chats_screen.dart:422:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chats_screen.dart:423:22 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\chat\presentation\chats_screen.dart:426:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chats_screen.dart:427:22 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\chat\presentation\chats_screen.dart:430:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\chats_screen.dart:431:22 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\chat\presentation\create_group_screen.dart:46:58 - deprecated_member_use
+   info - Use 'const' with the constructor to improve performance - lib\features\chat\presentation\settings\notification_settings_screen.dart:14:11 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\chat\presentation\settings\notification_settings_screen.dart:33:11 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\chat\presentation\settings\notification_settings_screen.dart:46:11 - prefer_const_constructors
+warning - Duplicate import - lib\features\chat\presentation\settings_screen.dart:4:8 - duplicate_import
+warning - Unused import: 'package:go_router/go_router.dart' - lib\features\chat\presentation\status_screen.dart:2:8 - unused_import
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\status_screen.dart:198:51 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\chat_input_bar.dart:65:43 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\chat_wallpaper.dart:13:24 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\chat_wallpaper.dart:14:24 - deprecated_member_use
+  error - Target of URI doesn't exist: '../../../core/models/message.dart' - lib\features\chat\presentation\widgets\message_context_menu.dart:2:8 - uri_does_not_exist
+  error - Undefined class 'Message' - lib\features\chat\presentation\widgets\message_context_menu.dart:7:9 - undefined_class
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\poll_bubble.dart:25:44 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\poll_bubble.dart:25:83 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\poll_bubble.dart:88:46 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\poll_bubble.dart:104:30 - deprecated_member_use
+warning - The value of the field '_startTime' isn't used - lib\features\chat\presentation\widgets\voice_recorder_button.dart:25:13 - unused_field
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\voice_recorder_button.dart:107:43 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\chat\presentation\widgets\voice_recorder_button.dart:149:43 - deprecated_member_use
+   info - Use 'const' with the constructor to improve performance - lib\features\contacts\presentation\contacts_screen.dart:123:27 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\contacts\presentation\contacts_screen.dart:140:27 - prefer_const_constructors
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\contacts\presentation\contacts_screen.dart:209:26 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\contacts\presentation\contacts_screen.dart:220:7 - use_build_context_synchronously
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\contacts\presentation\contacts_screen.dart:496:24 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\contacts\presentation\contacts_screen.dart:496:39 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\contacts\presentation\contacts_screen.dart:497:24 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\contacts\presentation\contacts_screen.dart:497:39 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\contacts\presentation\contacts_screen.dart:498:24 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\contacts\presentation\contacts_screen.dart:498:39 - deprecated_member_use
+   info - Use 'const' with the constructor to improve performance - lib\features\profile\presentation\profile_screen.dart:225:11 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\profile\presentation\profile_screen.dart:231:11 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\profile\presentation\profile_screen.dart:237:11 - prefer_const_constructors
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\profile\presentation\qr_code_screen.dart:34:41 - deprecated_member_use
+   info - Unnecessary 'this.' qualifier - lib\features\status\controllers\status_controller.dart:95:7 - unnecessary_this
+   info - Unnecessary 'this.' qualifier - lib\features\status\controllers\status_controller.dart:100:5 - unnecessary_this
+   info - Unnecessary 'this.' qualifier - lib\features\status\controllers\status_controller.dart:107:7 - unnecessary_this
+   info - Unnecessary 'this.' qualifier - lib\features\status\controllers\status_controller.dart:120:7 - unnecessary_this
+   info - Unnecessary 'this.' qualifier - lib\features\status\controllers\status_controller.dart:129:7 - unnecessary_this
+   info - Unnecessary 'this.' qualifier - lib\features\status\controllers\status_controller.dart:146:7 - unnecessary_this
+   info - Don't use 'BuildContext's across async gaps - lib\features\status\presentation\status_screen.dart:210:26 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\features\status\presentation\status_screen.dart:216:26 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\features\status\presentation\status_screen.dart:248:26 - use_build_context_synchronously
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\status\presentation\status_screen.dart:425:47 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps - lib\features\status\presentation\status_screen.dart:486:64 - use_build_context_synchronously
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\status\presentation\status_screen.dart:839:24 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\status\presentation\status_screen.dart:839:39 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\status\presentation\status_screen.dart:840:24 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\status\presentation\status_screen.dart:840:39 - deprecated_member_use
+   info - 'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre - lib\features\status\presentation\status_screen.dart:841:24 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\status\presentation\status_screen.dart:841:39 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\splash_screen.dart:53:68 - deprecated_member_use
+  error - Target of URI doesn't exist: 'package:my_fixed_app/lib/main.dart' - test\widget_test.dart:11:8 - uri_does_not_exist
+  error - The name 'MyApp' isn't a class - test\widget_test.dart:16:35 - creation_with_non_type
+

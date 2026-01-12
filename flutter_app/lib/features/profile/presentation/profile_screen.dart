@@ -39,7 +39,8 @@ class ProfileScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.read(authControllerProvider.notifier).refreshProfile(),
+            onPressed: () =>
+                ref.read(authControllerProvider.notifier).refreshProfile(),
           ),
         ],
       ),
@@ -58,7 +59,9 @@ class ProfileScreen extends ConsumerWidget {
                 backgroundImage: avatarImage,
                 child: avatarImage == null
                     ? Text(
-                        user.name.isNotEmpty ? user.name.characters.first.toUpperCase() : '?',
+                        user.name.isNotEmpty
+                            ? user.name.characters.first.toUpperCase()
+                            : '?',
                         style: Theme.of(context).textTheme.headlineMedium,
                       )
                     : null,
@@ -69,7 +72,10 @@ class ProfileScreen extends ConsumerWidget {
           Center(
             child: Text(
               user.name,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(height: 8),
@@ -83,17 +89,20 @@ class ProfileScreen extends ConsumerWidget {
           _InfoTile(
             icon: Icons.lock_outline_rounded,
             title: 'Sécurité avancée',
-            subtitle: 'Vos messages sont chiffrés de bout en bout via gazavba.eeuez.com',
+            subtitle:
+                'Vos messages sont chiffrés de bout en bout via gazavba.eeuez.com',
           ),
           _InfoTile(
             icon: Icons.devices_rounded,
             title: 'Appareils connectés',
-            subtitle: 'Une seule session active est autorisée par compte pour limiter les risques',
+            subtitle:
+                'Une seule session active est autorisée par compte pour limiter les risques',
           ),
           _InfoTile(
             icon: Icons.storage_rounded,
             title: 'Stockage',
-            subtitle: 'Pièces jointes et médias sont hébergés de manière sécurisée sur l’API Gazavba',
+            subtitle:
+                'Pièces jointes et médias sont hébergés de manière sécurisée sur l’API Gazavba',
           ),
           const SizedBox(height: 24),
           FilledButton.icon(

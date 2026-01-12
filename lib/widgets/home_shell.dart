@@ -62,10 +62,10 @@ class HomeShell extends StatelessWidget {
         destinations: _tabs
             .map(
               (tab) => NavigationDestination(
-            icon: Icon(tab.icon),
-            label: tab.label,
-          ),
-        )
+                icon: Icon(tab.icon),
+                label: tab.label,
+              ),
+            )
             .toList(),
       ),
     );

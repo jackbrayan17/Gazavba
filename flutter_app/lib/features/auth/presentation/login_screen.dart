@@ -160,9 +160,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
     final phone = _phoneController.text.trim();
     final password = _passwordController.text.trim();
-    final result = await ref
-        .read(authControllerProvider.notifier)
-        .login(phone, password);
+    final result =
+        await ref.read(authControllerProvider.notifier).login(phone, password);
     if (result.isSuccess && mounted) {
       context.go('/home/chats');
     }

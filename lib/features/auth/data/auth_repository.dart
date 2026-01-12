@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 import '../../../core/models/user.dart';
 import '../../../core/services/api_client.dart';
@@ -14,6 +15,7 @@ class AuthRepository {
   AuthRepository(this._client);
 
   final ApiClient _client;
+  final Logger _logger = Logger('AuthRepository');
 
   Future<User> login({required String phone, required String password}) async {
     final payload = await _client.post(
@@ -21,13 +23,15 @@ class AuthRepository {
       data: {'phone': phone, 'password': password},
       auth: false,
     );
-    final token = payload['token'] as String?;
+    final token =
+        payload['token'] as String? ?? payload['accessToken'] as String?;
     if (token == null) {
       throw ApiException('Token manquant dans la réponse');
     }
     await _client.setToken(token);
     final profile = payload['user'] as Map<String, dynamic>? ??
         await _client.get('/users/profile', auth: true);
+    _logger.fine('login profile payload: $profile');
     return User.fromJson(profile);
   }
 
@@ -50,17 +54,23 @@ class AuthRepository {
       formData: formData,
       auth: false,
     );
-    final token = payload['token'] as String?;
+    final token =
+        payload['token'] as String? ?? payload['accessToken'] as String?;
     if (token != null) {
       await _client.setToken(token);
     }
     final profile = payload['user'] as Map<String, dynamic>? ??
         await _client.get('/users/profile', auth: true);
+    _logger.fine('register profile payload: $profile');
     return User.fromJson(profile);
   }
 
   Future<User> refreshProfile() async {
-    final profile = await _client.get('/users/profile', auth: true);
+    final payload = await _client.get('/users/profile', auth: true);
+    final profile = (payload['user'] is Map<String, dynamic>)
+        ? payload['user'] as Map<String, dynamic>
+        : payload;
+    _logger.fine('refreshProfile payload: $payload');
     return User.fromJson(profile);
   }
 
@@ -69,17 +79,20 @@ class AuthRepository {
     String? email,
     String? phone,
     MultipartFile? avatar,
+    String? bio,
   }) async {
     final payload = <String, dynamic>{
       if (name != null) 'name': name,
       if (email != null) 'email': email,
       if (phone != null) 'phone': phone,
+      if (bio != null) 'bio': bio,
     };
     final hasAvatar = avatar != null;
     final response = await _client.put(
       '/users/profile',
       data: hasAvatar ? null : payload,
-      formData: hasAvatar ? FormData.fromMap({...payload, 'avatar': avatar}) : null,
+      formData:
+          hasAvatar ? FormData.fromMap({...payload, 'avatar': avatar}) : null,
     );
     final profile = response['user'] as Map<String, dynamic>? ??
         response['data'] as Map<String, dynamic>? ??

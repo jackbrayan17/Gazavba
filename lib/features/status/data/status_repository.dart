@@ -2,8 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/status.dart';
+import '../../../core/models/contact.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/utils/exceptions.dart';
+import '../../../core/utils/url_utils.dart';
 
 final statusRepositoryProvider = Provider<StatusRepository>((ref) {
   final client = ref.watch(apiClientProvider);
@@ -18,17 +20,27 @@ class StatusRepository {
   Future<List<Status>> fetchStatuses() async {
     final payload = await _client.get('/statuses');
     final items = _extractList(payload, 'statuses');
-    return items.map((item) => Status.fromJson(item as Map<String, dynamic>)).toList();
+    return items
+        .map((item) => Status.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<Status>> fetchUserStatuses(String userId) async {
     final payload = await _client.get('/statuses/user/$userId');
     final items = _extractList(payload, 'statuses');
-    return items.map((item) => Status.fromJson(item as Map<String, dynamic>)).toList();
+    return items
+        .map((item) => Status.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Status> createTextStatus(String content) async {
-    final payload = await _client.post('/statuses/text', data: {'content': content});
+    final payload = await _client.post(
+      '/statuses',
+      data: {
+        'type': 'text',
+        'content': content,
+      },
+    );
     final json = (payload['status'] as Map<String, dynamic>?) ?? payload;
     return Status.fromJson(json);
   }
@@ -38,10 +50,11 @@ class StatusRepository {
     String? content,
   }) async {
     final formData = FormData.fromMap({
+      'type': 'media',
       'media': file,
       if (content != null && content.isNotEmpty) 'content': content,
     });
-    final payload = await _client.post('/statuses/media', formData: formData);
+    final payload = await _client.post('/statuses', formData: formData);
     final json = (payload['status'] as Map<String, dynamic>?) ?? payload;
     return Status.fromJson(json);
   }
@@ -67,13 +80,27 @@ class StatusRepository {
   }) async {
     final url = status.mediaUrl;
     if (url == null || url.isEmpty) {
-      throw ApiException('Aucun média à télécharger pour ce statut');
+      throw ApiException('Aucun media a telecharger pour ce statut');
     }
     final extension = _inferExtension(url);
-    final filename = 'status_${status.id}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final filename =
+        'status_${status.id}_${DateTime.now().millisecondsSinceEpoch}.$extension';
     final savePath = '$directoryPath/$filename';
-    await _client.download(url, savePath);
+    final resolvedUrl = UrlUtils.resolveMediaUrl(url) ?? url;
+    await _client.download(resolvedUrl, savePath);
     return savePath;
+  }
+
+  Future<List<Contact>> fetchViewers(String statusId) async {
+    final payload = await _client.get(
+      '/statuses/$statusId/viewers',
+      query: {'wrap': 'true'},
+    );
+    final list = _extractList(payload, 'viewers');
+    return list
+        .map((item) => Contact.fromJson(
+            (item as Map<String, dynamic>)..['hasAccount'] = true))
+        .toList();
   }
 }
 

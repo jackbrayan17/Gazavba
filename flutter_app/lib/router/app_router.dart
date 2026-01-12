@@ -65,7 +65,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final phone = draft?.phone ?? state.uri.queryParameters['phone'];
           final password = draft?.password;
           return ProfileSetupScreen(
-            draft: draft ?? RegisterDraft(phone: phone ?? '', password: password ?? ''),
+            draft: draft ??
+                RegisterDraft(phone: phone ?? '', password: password ?? ''),
           );
         },
       ),
@@ -84,7 +85,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   final chatId = state.pathParameters['chatId']!;
                   final title = state.uri.queryParameters['title'];
                   final chat = state.extra is Chat ? state.extra as Chat : null;
-                  return ChatDetailScreen(chatId: chatId, title: title, initialChat: chat);
+                  return ChatDetailScreen(
+                      chatId: chatId, title: title, initialChat: chat);
                 },
               ),
             ],

@@ -79,7 +79,10 @@ class SupabaseService {
     final client = Supabase.instance.client;
     final email = (data['email'] as String?)?.trim();
     final password = data['password'] as String?;
-    if (email == null || email.isEmpty || password == null || password.isEmpty) {
+    if (email == null ||
+        email.isEmpty ||
+        password == null ||
+        password.isEmpty) {
       throw ArgumentError('E-mail et mot de passe requis.');
     }
 
@@ -148,7 +151,8 @@ class SupabaseService {
   }
 
   String _sanitizeExtension(String? extension) {
-    final normalized = extension?.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final normalized =
+        extension?.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
     if (normalized == null || normalized.isEmpty) {
       return 'png';
     }

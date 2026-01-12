@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 
 import '../storage/secure_storage.dart';
 import '../utils/exceptions.dart';
+import '../utils/url_utils.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   throw UnimplementedError('ApiClient must be provided before use');
@@ -84,7 +85,8 @@ class ApiClient {
 
   Future<void> init() async {
     _token = await _storage.readToken();
-    _logger.info('Initialised api client (hasToken=${_token != null}) -> $_baseUrl');
+    _logger.info(
+        'Initialised api client (hasToken=${_token != null}) -> $_baseUrl');
   }
 
   Future<void> setToken(String? token) async {
@@ -98,10 +100,9 @@ class ApiClient {
   }
 
   Future<void> download(String url, String savePath) async {
-    final target = url.startsWith('http') ? url : '$_baseUrl${url.startsWith('/') ? url.substring(1) : url}';
+    final target = UrlUtils.resolveMediaUrl(url) ?? url;
     await _dio.download(target, savePath);
   }
-
 
   Future<String?> currentToken() async {
     if (_token != null) {
@@ -110,6 +111,7 @@ class ApiClient {
     _token = await _storage.readToken();
     return _token;
   }
+
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
@@ -168,7 +170,8 @@ class ApiClient {
   }) async {
     final options = Options(
       method: method,
-      contentType: formData != null ? 'multipart/form-data' : Headers.jsonContentType,
+      contentType:
+          formData != null ? 'multipart/form-data' : Headers.jsonContentType,
       responseType: ResponseType.json,
       sendTimeout: const Duration(seconds: 20),
       receiveTimeout: const Duration(seconds: 20),
@@ -177,7 +180,8 @@ class ApiClient {
 
     final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
     try {
-      _logger.fine('[$method] $normalizedPath → params=${jsonEncode(query ?? {})}');
+      _logger.fine(
+          '[$method] $normalizedPath → params=${jsonEncode(query ?? {})}');
       final response = await _dio.request<Map<String, dynamic>>(
         normalizedPath,
         data: formData ?? data,

@@ -149,7 +149,8 @@ class AppDatabase {
       INNER JOIN chat_participants cp ON cp.chat_id = c.id
       WHERE cp.user_id = ?
       ORDER BY datetime(c.updated_at) DESC
-      '''.trim(),
+      '''
+          .trim(),
       [userId],
     );
 
@@ -277,7 +278,9 @@ class AppDatabase {
       'sender_id': teamId,
       'content':
           "N'hésitez pas à nous écrire pour découvrir toutes les fonctionnalités de l'application.",
-      'created_at': now.subtract(const Duration(minutes: 2, seconds: 10)).toIso8601String(),
+      'created_at': now
+          .subtract(const Duration(minutes: 2, seconds: 10))
+          .toIso8601String(),
       'status': 'delivered',
     });
 
@@ -291,7 +294,9 @@ class AppDatabase {
       'sender_id': guardianId,
       'content':
           "Salut ${await _userName(userId)} ! Nous échangeons ici nos bonnes pratiques de sécurité numérique.",
-      'created_at': now.subtract(const Duration(minutes: 1, seconds: 20)).toIso8601String(),
+      'created_at': now
+          .subtract(const Duration(minutes: 1, seconds: 20))
+          .toIso8601String(),
       'status': 'delivered',
     });
     await _db.insert('messages', {
@@ -321,7 +326,8 @@ class AppDatabase {
       limit: 1,
     );
     if (rows.isEmpty) {
-      throw ApiException('Session expirée, veuillez vous reconnecter', statusCode: 401);
+      throw ApiException('Session expirée, veuillez vous reconnecter',
+          statusCode: 401);
     }
     return rows.first['user_id'] as int;
   }
@@ -379,7 +385,8 @@ class AppDatabase {
       INNER JOIN chat_participants cp ON cp.user_id = u.id
       WHERE cp.chat_id = ?
       ORDER BY u.name COLLATE NOCASE ASC
-      '''.trim(),
+      '''
+          .trim(),
       [chatId],
     );
     return rows
@@ -415,7 +422,8 @@ class AppDatabase {
     return chatId;
   }
 
-  String _buildChatTitle(List<Map<String, dynamic>> participants, int viewerId) {
+  String _buildChatTitle(
+      List<Map<String, dynamic>> participants, int viewerId) {
     final others = participants
         .where((participant) => participant['id'] != viewerId.toString())
         .map((participant) => participant['name'] as String)
@@ -429,7 +437,8 @@ class AppDatabase {
     return others.join(', ');
   }
 
-  Map<String, dynamic> _messageToJson(Map<String, Object?> row, {required int viewerId}) {
+  Map<String, dynamic> _messageToJson(Map<String, Object?> row,
+      {required int viewerId}) {
     return {
       'id': row['id'].toString(),
       'chatId': row['chat_id'].toString(),

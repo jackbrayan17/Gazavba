@@ -16,7 +16,7 @@ Future<void> main() async {
   final database = await AppDatabase.open();
   final apiClient = ApiClient(storage: storage, database: database);
   await apiClient.init();
-  final socketService = SocketService();
+  final socketService = SocketService(apiClient: apiClient);
   final supabaseService = SupabaseService.instance;
   await supabaseService.init();
 

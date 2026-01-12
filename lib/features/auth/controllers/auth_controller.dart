@@ -14,7 +14,8 @@ final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   final client = ref.watch(apiClientProvider);
-  return AuthController(repository: repository, apiClient: client)..initialise();
+  return AuthController(repository: repository, apiClient: client)
+    ..initialise();
 });
 
 class AuthState {
@@ -56,6 +57,7 @@ class AuthController extends StateNotifier<AuthState> {
   final AuthRepository repository;
   final ApiClient apiClient;
   Timer? _statusTimer;
+  bool _presenceUpdating = false;
   final Logger _logger;
 
   Future<void> initialise() async {
@@ -67,12 +69,21 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final user = await repository.refreshProfile();
-      state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
+      if ((user.id).isEmpty) {
+        _logger.warning('Refreshed profile has empty id during initialise');
+      }
+      state =
+          state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();
-      _logger.info('Session restaurée pour ${user.id}');
+      _logger.info('Session restauree pour ${user.id}');
     } catch (error) {
       await apiClient.clearToken();
-      state = state.copyWith(isLoading: false, error: error.toString(), user: null, bootstrapComplete: true);
+      state = state.copyWith(
+        isLoading: false,
+        error: error.toString(),
+        user: null,
+        bootstrapComplete: true,
+      );
       _logger.warning('Impossible de restaurer la session: $error');
     }
   }
@@ -81,13 +92,20 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final user = await repository.login(phone: phone, password: password);
-      state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
+      final refreshed = await repository.refreshProfile();
+      if ((refreshed.id).isEmpty) {
+        _logger.warning('Refreshed profile has empty id after login');
+      }
+      state = state.copyWith(
+          user: refreshed, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();
-      _logger.info('Utilisateur connecté ${user.id}');
+      _logger.info(
+        'Utilisateur connecté ${refreshed.id} (bio present=${(refreshed.bio ?? '').isNotEmpty})',
+      );
       return Success(user);
     } on ApiException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
-      _logger.warning('Échec de connexion: ${error.message}');
+      _logger.warning('Echec de connexion: ${error.message}');
       return Failure(error);
     }
   }
@@ -108,13 +126,20 @@ class AuthController extends StateNotifier<AuthState> {
         email: email,
         avatar: avatar,
       );
-      state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
+      final refreshed = await repository.refreshProfile();
+      if ((refreshed.id).isEmpty) {
+        _logger.warning('Refreshed profile has empty id after register');
+      }
+      state = state.copyWith(
+          user: refreshed, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();
-      _logger.info('Nouveau compte créé ${user.id}');
+      _logger.info(
+        'Nouveau compte cree ${refreshed.id} (bio present=${(refreshed.bio ?? '').isNotEmpty})',
+      );
       return Success(user);
     } on ApiException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
-      _logger.warning('Échec d\'inscription: ${error.message}');
+      _logger.warning("Echec d'inscription: ${error.message}");
       return Failure(error);
     }
   }
@@ -124,6 +149,7 @@ class AuthController extends StateNotifier<AuthState> {
     String? email,
     String? phone,
     MultipartFile? avatar,
+    String? bio,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -132,13 +158,14 @@ class AuthController extends StateNotifier<AuthState> {
         email: email,
         phone: phone,
         avatar: avatar,
+        bio: bio,
       );
       state = state.copyWith(user: user, isLoading: false);
-      _logger.info('Profil mis à jour pour ${user.id}');
+      _logger.info('Profil mis a jour pour ${user.id}');
       return Success(user);
     } on ApiException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
-      _logger.warning('Mise à jour du profil impossible: ${error.message}');
+      _logger.warning('Mise a jour du profil impossible: ${error.message}');
       return Failure(error);
     }
   }
@@ -147,6 +174,9 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       final user = await repository.refreshProfile();
       state = state.copyWith(user: user);
+      if ((user.id).isEmpty) {
+        _logger.warning('refreshProfile returned empty id');
+      }
     } catch (_) {
       // ignore
     }
@@ -158,17 +188,21 @@ class AuthController extends StateNotifier<AuthState> {
     await apiClient.clearToken();
     state = const AuthState(bootstrapComplete: true);
     _statusTimer?.cancel();
-    _logger.info('Utilisateur déconnecté');
+    _logger.info('Utilisateur deconnecte');
   }
 
   void _startPresenceLoop() {
     _statusTimer?.cancel();
-    _statusTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
+    _statusTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (_presenceUpdating) return;
+      _presenceUpdating = true;
       try {
         await apiClient.post('/users/online', data: {'isOnline': true});
-        _logger.fine('Présence synchronisée');
+        _logger.fine('Presence synchronisee');
       } catch (_) {
         // ignore presence errors
+      } finally {
+        _presenceUpdating = false;
       }
     });
   }

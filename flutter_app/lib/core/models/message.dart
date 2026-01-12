@@ -15,7 +15,10 @@ class Message {
       chatId: json['chatId']?.toString() ?? json['conversationId'].toString(),
       senderId: json['senderId']?.toString() ?? json['from'].toString(),
       content: (json['content'] ?? json['message'] ?? '') as String,
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? json['sentAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ??
+              json['sentAt'] as String? ??
+              '') ??
+          DateTime.now(),
       isMine: json['isMine'] == true,
       status: json['status'] as String?,
     );

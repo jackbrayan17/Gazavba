@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gazavba - Secure Messaging</title>
+    <style>
+      :root {
+        --dark: #09392d;
+        --green: #389038;
+        --light: #94d358;
+        --yellow: #ffc80d;
+        --bg: #0b3f33;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Segoe UI", Tahoma, sans-serif;
+        background: radial-gradient(circle at top, #13503f, #062c23);
+        color: #f2f7f4;
+      }
+
+      .page {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 48px 24px 64px;
+      }
+
+      .hero {
+        max-width: 960px;
+        margin: 0 auto;
+        width: 100%;
+        display: grid;
+        gap: 32px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: rgba(148, 211, 88, 0.12);
+        border: 1px solid rgba(148, 211, 88, 0.35);
+        color: #e9f6ea;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+      }
+
+      h1 {
+        font-size: clamp(32px, 4vw, 52px);
+        margin: 12px 0 16px;
+        color: #f9fffb;
+      }
+
+      p {
+        margin: 0;
+        color: rgba(242, 247, 244, 0.85);
+        line-height: 1.6;
+        font-size: 16px;
+      }
+
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px 24px;
+        border-radius: 16px;
+        background: var(--yellow);
+        color: #09392d;
+        font-weight: 700;
+        text-decoration: none;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+        margin-top: 20px;
+      }
+
+      .features {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        margin-top: 32px;
+      }
+
+      .card {
+        background: rgba(9, 57, 45, 0.72);
+        border: 1px solid rgba(148, 211, 88, 0.2);
+        padding: 18px 20px;
+        border-radius: 18px;
+      }
+
+      .card h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        color: #eaf6ec;
+      }
+
+      .footer {
+        margin-top: auto;
+        text-align: center;
+        color: rgba(242, 247, 244, 0.6);
+        font-size: 13px;
+        padding-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <main class="hero">
+        <div class="badge">Gazavba - Secure Messaging</div>
+        <h1>Fast, private, and made for teams that value trust.</h1>
+        <p>
+          Gazavba connects people with end-to-end messaging, realtime presence,
+          voice and video calls, and a modern wallet experience. This server
+          hosts the API used by our mobile clients.
+        </p>
+        <a class="cta" href="/downloads/gazavba-latest.apk">Download APK</a>
+
+        <section class="features">
+          <div class="card">
+            <h3>Realtime chat</h3>
+            <p>Lightning fast conversations with delivery and read receipts.</p>
+          </div>
+          <div class="card">
+            <h3>Status updates</h3>
+            <p>Share moments with privacy controls and viewer insights.</p>
+          </div>
+          <div class="card">
+            <h3>Calls built in</h3>
+            <p>Crystal clear audio and video for teams and communities.</p>
+          </div>
+        </section>
+      </main>
+
+      <div class="footer">
+        Place your APK at <strong>/downloads/gazavba-latest.apk</strong>.
+      </div>
+    </div>
+  </body>
+</html>

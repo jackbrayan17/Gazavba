@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:logging/logging.dart';
 
 import '../../auth/controllers/auth_controller.dart';
 import '../../../core/services/log_service.dart';
@@ -12,16 +13,26 @@ import '../../../core/theme/theme_controller.dart';
 import '../../../core/utils/exceptions.dart';
 import '../../../core/utils/result.dart';
 import '../../../core/models/user.dart';
+import 'qr_code_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final logger = Logger('ProfileScreen');
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
     final themeMode = ref.watch(themeControllerProvider);
     final logService = ref.watch(logServiceProvider);
+
+    if (user == null && !authState.isLoading) {
+      // Attempt a silent refresh if we have a session but no user loaded yet.
+      Future.microtask(
+          () => ref.read(authControllerProvider.notifier).refreshProfile());
+      logger.warning(
+          'User is null on profile screen; requested refreshProfile()');
+    }
 
     if (user == null) {
       return Scaffold(
@@ -43,14 +54,25 @@ class ProfileScreen extends ConsumerWidget {
       );
     }
 
+    logger.fine(
+        'Rendering profile for ${user.id}, hasBio=${(user.bio ?? '').isNotEmpty}');
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mon profil'),
         actions: [
           IconButton(
+            tooltip: 'Mon Code QR',
+            icon: const Icon(Icons.qr_code_rounded),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => QrCodeScreen(user: user)),
+            ),
+          ),
+          IconButton(
             tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.read(authControllerProvider.notifier).refreshProfile(),
+            onPressed: () =>
+                ref.read(authControllerProvider.notifier).refreshProfile(),
           ),
         ],
       ),
@@ -63,8 +85,9 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 CircleAvatar(
                   radius: 54,
-                  backgroundImage:
-                      user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
+                  backgroundImage: user.avatarUrl != null
+                      ? NetworkImage(user.avatarUrl!)
+                      : null,
                   child: user.avatarUrl == null
                       ? Text(
                           user.name.isNotEmpty
@@ -78,7 +101,8 @@ class ProfileScreen extends ConsumerWidget {
                   icon: const Icon(Icons.camera_alt_rounded, size: 18),
                   label: const Text('Modifier'),
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     textStyle: Theme.of(context).textTheme.labelSmall,
                     visualDensity: VisualDensity.compact,
                   ),
@@ -93,22 +117,31 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 Text(
                   user.name,
-                  style:
-                      Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   user.phone,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
+                if ((user.bio ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    user.bio!,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 if (user.email?.isNotEmpty == true) ...[
                   const SizedBox(height: 4),
                   Text(
                     user.email!,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ],
                 const SizedBox(height: 12),
@@ -123,38 +156,59 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: 24),
           Card(
             elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
             child: Column(
               children: [
                 ListTile(
                   leading: const Icon(Icons.person_outline_rounded),
                   title: const Text('Nom complet'),
-                  subtitle: Text(user.name.isEmpty ? 'Non renseigné' : user.name),
+                  subtitle:
+                      Text(user.name.isEmpty ? 'Non renseigné' : user.name),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit_note_rounded),
-                    onPressed: () => _openEditSheet(context, ref, user, focusField: _ProfileField.name),
+                    onPressed: () => _openEditSheet(context, ref, user,
+                        focusField: _ProfileField.name),
                   ),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.mail_outline_rounded),
                   title: const Text('Adresse e-mail'),
-                  subtitle: Text(user.email?.isNotEmpty == true ? user.email! : 'Non renseignée'),
+                  subtitle: Text(user.email?.isNotEmpty == true
+                      ? user.email!
+                      : 'Non renseignée'),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit_note_rounded),
-                    onPressed: () =>
-                        _openEditSheet(context, ref, user, focusField: _ProfileField.email),
+                    onPressed: () => _openEditSheet(context, ref, user,
+                        focusField: _ProfileField.email),
                   ),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.phone_android_rounded),
                   title: const Text('Téléphone'),
-                  subtitle: Text(user.phone.isEmpty ? 'Non renseigné' : user.phone),
+                  subtitle:
+                      Text(user.phone.isEmpty ? 'Non renseigné' : user.phone),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit_note_rounded),
-                    onPressed: () =>
-                        _openEditSheet(context, ref, user, focusField: _ProfileField.phone),
+                    onPressed: () => _openEditSheet(context, ref, user,
+                        focusField: _ProfileField.phone),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: const Text('Bio'),
+                  subtitle: Text(
+                    (user.bio ?? '').isNotEmpty
+                        ? user.bio!
+                        : 'Décrivez-vous en quelques mots',
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.edit_note_rounded),
+                    onPressed: () => _openEditSheet(context, ref, user,
+                        focusField: _ProfileField.bio),
                   ),
                 ),
               ],
@@ -171,17 +225,20 @@ class ProfileScreen extends ConsumerWidget {
           _InfoTile(
             icon: Icons.lock_outline_rounded,
             title: 'Sécurité avancée',
-            subtitle: 'Vos messages sont chiffrés de bout en bout via gazavba.eeuez.com',
+            subtitle:
+                'Vos messages sont chiffrés de bout en bout via gazavba.eeuez.com',
           ),
           _InfoTile(
             icon: Icons.devices_rounded,
             title: 'Appareils connectés',
-            subtitle: 'Une seule session active est autorisée par compte pour limiter les risques',
+            subtitle:
+                'Une seule session active est autorisée par compte pour limiter les risques',
           ),
           _InfoTile(
             icon: Icons.storage_rounded,
             title: 'Stockage',
-            subtitle: 'Pièces jointes et médias sont hébergés de manière sécurisée sur l’API Gazavba',
+            subtitle:
+                'Pièces jointes et médias sont hébergés de manière sécurisée sur l’API Gazavba',
           ),
           const SizedBox(height: 24),
           FilledButton.icon(
@@ -216,7 +273,7 @@ void _openEditSheet(
   );
 }
 
-enum _ProfileField { name, email, phone }
+enum _ProfileField { name, email, phone, bio }
 
 class _ProfileEditSheet extends ConsumerStatefulWidget {
   const _ProfileEditSheet({required this.user, this.focusField});
@@ -232,6 +289,7 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _bioController;
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedFile;
   Uint8List? _previewBytes;
@@ -243,6 +301,7 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
     _nameController = TextEditingController(text: widget.user.name);
     _emailController = TextEditingController(text: widget.user.email ?? '');
     _phoneController = TextEditingController(text: widget.user.phone);
+    _bioController = TextEditingController(text: widget.user.bio ?? '');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       switch (widget.focusField) {
         case _ProfileField.name:
@@ -254,6 +313,9 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
         case _ProfileField.phone:
           FocusScope.of(context).requestFocus(_phoneFocus);
           break;
+        case _ProfileField.bio:
+          FocusScope.of(context).requestFocus(_bioFocus);
+          break;
         case null:
           break;
       }
@@ -263,15 +325,18 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
   final FocusNode _nameFocus = FocusNode();
   final FocusNode _emailFocus = FocusNode();
   final FocusNode _phoneFocus = FocusNode();
+  final FocusNode _bioFocus = FocusNode();
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _bioController.dispose();
     _nameFocus.dispose();
     _emailFocus.dispose();
     _phoneFocus.dispose();
+    _bioFocus.dispose();
     super.dispose();
   }
 
@@ -315,8 +380,9 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
                 backgroundImage: _previewBytes != null
                     ? MemoryImage(_previewBytes!) as ImageProvider<Object>
                     : widget.user.avatarUrl != null
-                    ? NetworkImage(widget.user.avatarUrl!) as ImageProvider<Object>
-                    : null,
+                        ? NetworkImage(widget.user.avatarUrl!)
+                            as ImageProvider<Object>
+                        : null,
                 child: widget.user.avatarUrl == null && _previewBytes == null
                     ? Text(
                         widget.user.name.isNotEmpty
@@ -337,7 +403,9 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
                       label: const Text('Choisir'),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _isSaving || (_previewBytes == null && widget.user.avatarUrl == null)
+                      onPressed: _isSaving ||
+                              (_previewBytes == null &&
+                                  widget.user.avatarUrl == null)
                           ? null
                           : _clearImage,
                       icon: const Icon(Icons.delete_outline_rounded),
@@ -353,6 +421,13 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
             controller: _nameController,
             focusNode: _nameFocus,
             decoration: const InputDecoration(labelText: 'Nom complet'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _bioController,
+            focusNode: _bioFocus,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: 'Bio'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -389,7 +464,8 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
   }
 
   Future<void> _pickImage() async {
-    final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final file =
+        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (file != null) {
       final bytes = await file.readAsBytes();
       setState(() {
@@ -420,9 +496,12 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
     final notifier = ref.read(authControllerProvider.notifier);
     final result = await notifier.updateProfile(
       name: _nameController.text.trim(),
-      email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
+      email: _emailController.text.trim().isEmpty
+          ? null
+          : _emailController.text.trim(),
       phone: _phoneController.text.trim(),
       avatar: avatar,
+      bio: _bioController.text.trim(),
     );
 
     if (!mounted) return;
@@ -474,7 +553,8 @@ class _AppearanceCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   'Apparence et suivi',
-                  style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  style: textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -509,14 +589,16 @@ class _AppearanceCard extends StatelessWidget {
             const SizedBox(height: 20),
             Text(
               'Journal en temps réel',
-              style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              style:
+                  textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Text(
               logFilePath != null
                   ? 'Chaque action est enregistrée dans le fichier:\n$logFilePath'
                   : 'Le suivi s’affiche dans la console de développement.',
-              style: textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+              style: textTheme.bodyMedium
+                  ?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
         ),

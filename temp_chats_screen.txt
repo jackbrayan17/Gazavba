@@ -1,0 +1,979 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:characters/characters.dart';
+
+import '../../../core/models/chat.dart';
+import '../../../core/models/message.dart';
+import '../../../core/models/user.dart';
+import '../../../core/models/wallet.dart';
+import '../../auth/controllers/auth_controller.dart';
+import '../controllers/chat_controller.dart';
+import '../../wallet/data/wallet_repository.dart';
+import '../../contacts/controllers/contacts_controller.dart';
+import '../../../core/models/contact.dart';
+
+class ChatsScreen extends ConsumerStatefulWidget {
+  const ChatsScreen({super.key});
+
+  @override
+  ConsumerState<ChatsScreen> createState() => _ChatsScreenState();
+}
+
+class _ChatsScreenState extends ConsumerState<ChatsScreen> {
+  bool _isSearching = false;
+  final _searchController = TextEditingController();
+  String _query = '';
+  int _selectedTab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _query = _searchController.text.trim().toLowerCase();
+      });
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final chatState = ref.read(chatControllerProvider);
+      if (!chatState.isLoading && chatState.chats.isEmpty) {
+        ref.read(chatControllerProvider.notifier).loadChats();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authControllerProvider);
+    final chatState = ref.watch(chatControllerProvider);
+    final walletInfo = ref.watch(walletInfoProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final chats = chatState.chats.where((chat) {
+      if (_query.isEmpty) return true;
+      final haystack =
+          '${chat.title} ${_participants(chat.participants)}'.toLowerCase();
+      return haystack.contains(_query);
+    }).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Modern header
+            _ModernHeader(
+              walletInfo: walletInfo,
+              isSearching: _isSearching,
+              searchController: _searchController,
+              onSearchToggle: () {
+                setState(() {
+                  _isSearching = !_isSearching;
+                  if (!_isSearching) {
+                    _searchController.clear();
+                  }
+                });
+              },
+              onSettingsTap: () => context.go('/home/settings'),
+            ),
+            // Tab bar
+            _ModernTabBar(
+              selectedTab: _selectedTab,
+              onTabChanged: (index) => setState(() => _selectedTab = index),
+            ),
+            const SizedBox(height: 8),
+            // Content
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await ref.read(chatControllerProvider.notifier).loadChats();
+                },
+                child: _selectedTab == 0
+                    ? _buildChatsList(chats, chatState, authState)
+                    : _selectedTab == 1
+                        ? _GroupsView(chats: chatState.chats)
+                        : const _ContactsView(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.primary.withOpacity(0.3),
+              offset: const Offset(0, 4),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          onPressed: () {},
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(Icons.edit_rounded),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatsList(List<Chat> chats, ChatState chatState, authState) {
+    if (chatState.isLoading && chats.isEmpty) {
+      return const _ChatsLoadingState();
+    } else if (chats.isEmpty) {
+      return _EmptyState(isAuthenticated: authState.isAuthenticated);
+    } else {
+      return ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: chats.length,
+        itemBuilder: (context, index) {
+          final chat = chats[index];
+          return _ModernChatTile(chat: chat);
+        },
+      );
+    }
+  }
+
+  String _participants(List<User> users) {
+    return users.map((user) => user.name).join(', ');
+  }
+}
+
+class _ModernHeader extends StatelessWidget {
+  const _ModernHeader({
+    required this.walletInfo,
+    required this.isSearching,
+    required this.searchController,
+    required this.onSearchToggle,
+    required this.onSettingsTap,
+  });
+
+  final AsyncValue<WalletInfo?> walletInfo;
+  final bool isSearching;
+  final TextEditingController searchController;
+  final VoidCallback onSearchToggle;
+  final VoidCallback onSettingsTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              if (!isSearching) ...[
+                // Profile avatar
+                GestureDetector(
+                  onTap: onSettingsTap,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      image: const DecorationImage(
+                        image: AssetImage('assets/images/logo.jpg'),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Title
+                Expanded(
+                  child: Text(
+                    'Gazavba',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+              ] else ...[
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest
+                          .withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: true,
+                      style: TextStyle(color: colorScheme.onSurface),
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher...',
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        icon: Icon(
+                          Icons.search,
+                          color: colorScheme.onSurfaceVariant,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              // Action buttons
+              if (!isSearching) ...[
+                _WalletBadge(walletInfo: walletInfo),
+                const SizedBox(width: 8),
+              ],
+              Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    isSearching ? Icons.close : Icons.search,
+                    size: 20,
+                  ),
+                  onPressed: onSearchToggle,
+                  padding: const EdgeInsets.all(8),
+                  constraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 40),
+                ),
+              ),
+              if (!isSearching) ...[
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color:
+                        colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.more_vert_rounded, size: 20),
+                    onPressed: onSettingsTap,
+                    padding: const EdgeInsets.all(8),
+                    constraints:
+                        const BoxConstraints(minWidth: 40, minHeight: 40),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModernTabBar extends StatelessWidget {
+  const _ModernTabBar({
+    required this.selectedTab,
+    required this.onTabChanged,
+  });
+
+  final int selectedTab;
+  final ValueChanged<int> onTabChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            _TabButton(
+              label: 'All Chats',
+              isSelected: selectedTab == 0,
+              onTap: () => onTabChanged(0),
+            ),
+            _TabButton(
+              label: 'Groups',
+              isSelected: selectedTab == 1,
+              onTap: () => onTabChanged(1),
+            ),
+            _TabButton(
+              label: 'Contacts',
+              isSelected: selectedTab == 2,
+              onTap: () => onTabChanged(2),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TabButton extends StatelessWidget {
+  const _TabButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? colorScheme.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? colorScheme.onSurface
+                      : colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModernChatTile extends ConsumerWidget {
+  const _ModernChatTile({required this.chat});
+
+  final Chat chat;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lastMessage = chat.lastMessage;
+    final subtitle = lastMessage != null ? _formatMessage(lastMessage) : 'Nouveau chat';
+    final time = lastMessage?.createdAt ?? chat.updatedAt;
+    final timeLabel = _formatTime(time);
+    final chatState = ref.watch(chatControllerProvider);
+    final authState = ref.watch(authControllerProvider);
+    final isTyping = chatState.typingByChat[chat.id] == true;
+    final isMine = lastMessage != null && (lastMessage.isMine || lastMessage.senderId == authState.user?.id);
+    final participantIds = chat.participants.map((user) => user.id).toSet();
+    final online = participantIds.intersection(chatState.onlineUserIds).isNotEmpty;
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: InkWell(
+        onTap: () => context.go(
+          '/home/chats/conversation/${chat.id}',
+          extra: {'title': chat.title, 'chat': chat},
+        ),
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Hero(
+                tag: 'chat-avatar-${chat.id}',
+                child: Stack(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        image: chat.avatarUrl != null
+                            ? DecorationImage(
+                                image: NetworkImage(chat.avatarUrl!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                        color: chat.avatarUrl == null ? colorScheme.primaryContainer : null,
+                      ),
+                      child: chat.avatarUrl == null
+                          ? Center(
+                              child: Text(
+                                chat.title.characters.first.toUpperCase(),
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.onPrimaryContainer,
+                                    ),
+                              ),
+                            )
+                          : null,
+                    ),
+                    if (online)
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.green,
+                            border: Border.all(
+                              color: colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            chat.title,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          timeLabel,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isMine && lastMessage != null) ...[
+                                _StatusIcon(
+                                  message: lastMessage,
+                                  colorScheme: colorScheme,
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Flexible(
+                                child: Text(
+                                  isTyping ? 'En train d\'�crire�' : subtitle,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: isTyping ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (chat.unreadCount > 0)
+                          Container(
+                            margin: const EdgeInsets.only(left: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              chat.unreadCount.toString(),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onPrimary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final difference = now.difference(time);
+
+    if (difference.inMinutes < 1) {
+      return 'now';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes}m';
+    } else if (difference.inDays < 1) {
+      return DateFormat.Hm().format(time);
+    } else if (difference.inDays < 7) {
+      return DateFormat.E('fr_FR').format(time);
+    } else {
+      return DateFormat('dd/MM').format(time);
+    }
+  }
+
+  String _formatMessage(Message message) {
+    if (message.messageType != 'text' && message.mediaUrl != null) {
+      switch (message.messageType) {
+        case 'image':
+          return 'Photo';
+        case 'video':
+          return 'Video';
+        case 'audio':
+          return 'Audio';
+        case 'file':
+          return 'Fichier';
+      }
+      return message.messageType;
+    }
+    return message.content.trim().isEmpty ? 'Message' : message.content.trim();
+  }
+}
+
+class _StatusIcon extends StatelessWidget {
+  const _StatusIcon({required this.message, required this.colorScheme});
+
+  final Message message;
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    IconData icon = Icons.done_rounded;
+    Color color = colorScheme.onSurfaceVariant;
+
+    final status = message.status ?? '';
+    if (status == 'pending' || status == 'sending') {
+      icon = Icons.access_time_rounded;
+      color = colorScheme.onSurfaceVariant.withOpacity(0.7);
+    } else if (status == 'sent') {
+      icon = Icons.done_rounded;
+    } else if (status == 'delivered') {
+      icon = Icons.done_all_rounded;
+    } else if (status == 'read' || message.readAt != null) {
+      icon = Icons.done_all_rounded;
+      color = colorScheme.primary;
+    }
+
+    return Icon(icon, size: 16, color: color);
+  }
+}
+
+class _ChatsLoadingState extends StatelessWidget {
+  const _ChatsLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      itemCount: 8,
+      padding: const EdgeInsets.all(16),
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        return ShimmerWidget(
+          height: 80,
+          borderRadius: BorderRadius.circular(20),
+        );
+      },
+    );
+  }
+}
+
+class ShimmerWidget extends StatefulWidget {
+  const ShimmerWidget({
+    required this.height,
+    required this.borderRadius,
+    super.key,
+  });
+
+  final double height;
+  final BorderRadius borderRadius;
+
+  @override
+  State<ShimmerWidget> createState() => _ShimmerWidgetState();
+}
+
+class _ShimmerWidgetState extends State<ShimmerWidget>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: widget.borderRadius,
+            gradient: LinearGradient(
+              colors: [
+                Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.1),
+                Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+              ],
+              stops: const [0.1, 0.5, 0.9],
+              transform: GradientRotation(_controller.value * 3.14),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.isAuthenticated,
+    this.icon,
+    this.title,
+    this.subtitle,
+  });
+
+  final bool isAuthenticated;
+  final IconData? icon;
+  final String? title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon ?? Icons.chat_bubble_outline_rounded,
+              size: 80,
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              title ??
+                  (isAuthenticated ? 'Aucune conversation' : 'Connectez-vous'),
+              style: textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              subtitle ??
+                  (isAuthenticated
+                      ? 'Lancez une nouvelle conversation pour démarrer'
+                      : 'Vos messages chiffrés apparaîtront ici'),
+              style: textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupsView extends StatelessWidget {
+  const _GroupsView({required this.chats});
+
+  final List<Chat> chats;
+
+  @override
+  Widget build(BuildContext context) {
+    final groupChats = chats.where((chat) => chat.type == 'group').toList();
+
+    if (groupChats.isEmpty) {
+      return const _EmptyState(
+        isAuthenticated: true,
+        icon: Icons.group_outlined,
+        title: 'Aucun groupe',
+        subtitle: 'Vous n\'avez pas encore rejoint de groupe.',
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: groupChats.length,
+      itemBuilder: (context, index) {
+        return _ModernChatTile(chat: groupChats[index]);
+      },
+    );
+  }
+}
+
+class _ContactsView extends ConsumerWidget {
+  const _ContactsView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final contactsState = ref.watch(contactsControllerProvider);
+
+    if (contactsState.isLoading) {
+      return const _ChatsLoadingState();
+    }
+
+    if (contactsState.contacts.isEmpty) {
+      return const _EmptyState(
+        isAuthenticated: true,
+        icon: Icons.person_outline_rounded,
+        title: 'Aucun contact',
+        subtitle: 'Vos contacts apparaîtront ici.',
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: contactsState.contacts.length,
+      itemBuilder: (context, index) {
+        final contact = contactsState.contacts[index];
+        return _ContactTile(contact: contact);
+      },
+    );
+  }
+}
+
+class _ContactTile extends ConsumerWidget {
+  const _ContactTile({required this.contact});
+
+  final Contact contact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: InkWell(
+        onTap: () async {
+          try {
+            final chat = await ref
+                .read(contactsControllerProvider.notifier)
+                .startChat(contact);
+            if (context.mounted) {
+              context.go(
+                '/home/chats/conversation/${chat.id}${chat.id}',
+                extra: {'title': chat.title ?? contact.name, 'chat': chat},
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Erreur: $e')),
+              );
+            }
+          }
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: colorScheme.primaryContainer,
+                  image: contact.avatarUrl != null
+                      ? DecorationImage(
+                          image: NetworkImage(contact.avatarUrl!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: contact.avatarUrl == null
+                    ? Center(
+                        child: Text(
+                          contact.name.characters.first.toUpperCase(),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: colorScheme.onPrimaryContainer,
+                                  ),
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      contact.name,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      contact.phone,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              if (contact.hasAccount)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'App',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  onPressed: () {
+                    ref
+                        .read(contactsControllerProvider.notifier)
+                        .inviteContact(contact);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WalletBadge extends StatelessWidget {
+  const _WalletBadge({required this.walletInfo});
+
+  final AsyncValue<WalletInfo?> walletInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    String label = 'No Wallet';
+    Color background = colors.surfaceContainerHighest.withOpacity(0.5);
+    Color foreground = colors.onSurfaceVariant;
+
+    walletInfo.when(
+      data: (wallet) {
+        if (wallet?.walletExists == true) {
+          label = wallet!.displayBalance;
+          background = colors.primaryContainer;
+          foreground = colors.onPrimaryContainer;
+        }
+      },
+      loading: () {
+        label = '...';
+      },
+      error: (_, __) {
+        label = 'Error';
+      },
+    );
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.account_balance_wallet_rounded,
+              size: 14, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

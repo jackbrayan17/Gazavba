@@ -70,7 +70,8 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
             ? NetworkImage(chat.avatarUrl!)
             : null;
 
-    final messages = (chatState.messagesByChat[widget.chatId] ?? const <Message>[])
+    final messages = (chatState.messagesByChat[widget.chatId] ??
+            const <Message>[])
         .map((message) => message.senderId == authState.user?.id
             ? message.copyWith(isMine: true)
             : message)
@@ -124,12 +125,14 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
                 ? const _EmptyConversation()
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 24),
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final message = messages[index];
                       final showDateHeader = index == 0 ||
-                          !_isSameDay(message.createdAt, messages[index - 1].createdAt);
+                          !_isSameDay(
+                              message.createdAt, messages[index - 1].createdAt);
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -185,7 +188,9 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
     _messageController.clear();
-    await ref.read(chatControllerProvider.notifier).sendMessage(widget.chatId, content);
+    await ref
+        .read(chatControllerProvider.notifier)
+        .sendMessage(widget.chatId, content);
     await _scrollToBottom();
   }
 
@@ -212,8 +217,10 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bgColor = message.isMine ? colorScheme.primary : colorScheme.surfaceVariant;
-    final textColor = message.isMine ? colorScheme.onPrimary : colorScheme.onSurface;
+    final bgColor =
+        message.isMine ? colorScheme.primary : colorScheme.surfaceVariant;
+    final textColor =
+        message.isMine ? colorScheme.onPrimary : colorScheme.onSurface;
     final time = DateFormat.Hm().format(message.createdAt);
 
     return Container(
@@ -224,8 +231,12 @@ class _MessageBubble extends StatelessWidget {
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(20),
           topRight: const Radius.circular(20),
-          bottomLeft: message.isMine ? const Radius.circular(20) : const Radius.circular(4),
-          bottomRight: message.isMine ? const Radius.circular(4) : const Radius.circular(20),
+          bottomLeft: message.isMine
+              ? const Radius.circular(20)
+              : const Radius.circular(4),
+          bottomRight: message.isMine
+              ? const Radius.circular(4)
+              : const Radius.circular(20),
         ),
         boxShadow: [
           BoxShadow(
@@ -241,7 +252,10 @@ class _MessageBubble extends StatelessWidget {
         children: [
           Text(
             message.content,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: textColor),
+            style: Theme.of(context)
+                .textTheme
+                .bodyLarge
+                ?.copyWith(color: textColor),
           ),
           const SizedBox(height: 4),
           Text(

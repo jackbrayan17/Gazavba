@@ -38,10 +38,12 @@ flutter:
   uses-material-design: true
   assets:
     - assets/animations/
-    - assets/images/logo.jpg
+    - assets/images/gazavba.png
+    - assets/images/gazavba_monochrome.png
+    - assets/images/notification_logo.png
 flutter_native_splash:
   color: "#ffffff"           # background color while starting
-  image: assets/images/logo.jpg
+  image: assets/images/gazavba.png
   android: true
   ios: true
   web: true
@@ -51,5 +53,5 @@ flutter_launcher_icons:
   ios: true
   web:
     generate: true
-    image_path: "assets/images/logo.jpg"
-  image_path: "assets/images/logo.jpg"
+    image_path: "assets/images/gazavba.png"
+  image_path: "assets/images/gazavba.png"

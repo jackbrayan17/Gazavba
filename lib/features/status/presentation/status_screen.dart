@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -5,12 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:logging/logging.dart';
 
+import '../../../core/models/contact.dart';
 import '../../../core/models/status.dart';
 import '../../../core/utils/exceptions.dart';
 import '../../../core/utils/result.dart';
 import '../../auth/controllers/auth_controller.dart';
 import '../../chat/controllers/chat_controller.dart';
+import '../../contacts/controllers/contacts_controller.dart';
 import '../controllers/status_controller.dart';
 
 class StatusScreen extends ConsumerWidget {
@@ -18,24 +22,108 @@ class StatusScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final logger = Logger('StatusScreen');
     final state = ref.watch(statusControllerProvider);
     final controller = ref.read(statusControllerProvider.notifier);
     final chatState = ref.watch(chatControllerProvider);
     final authState = ref.watch(authControllerProvider);
+    final contactsState = ref.watch(contactsControllerProvider);
 
     final currentUserId = authState.user?.id;
     final allowedUserIds = <String>{
       if (currentUserId != null) currentUserId,
-      ...chatState.chats.expand((chat) => chat.participants.map((user) => user.id)),
+      ...chatState.chats
+          .expand((chat) => chat.participants.map((user) => user.id)),
+      ...contactsState.contacts
+          .where((c) => (c.accountUserId?.isNotEmpty ?? false))
+          .map((c) => c.accountUserId!),
+      ...contactsState.contacts.where((c) => c.id.isNotEmpty).map((c) => c.id),
     };
 
     final filtered = state.statuses
         .where((status) => allowedUserIds.contains(status.userId))
         .toList();
     final mutedSet = state.mutedUserIds;
-    final activeStatuses = filtered.where((status) => !mutedSet.contains(status.userId)).toList();
-    final mutedStatuses = filtered.where((status) => mutedSet.contains(status.userId)).toList();
-    final hasStatuses = activeStatuses.isNotEmpty || mutedStatuses.isNotEmpty;
+    final active =
+        filtered.where((status) => !mutedSet.contains(status.userId)).toList();
+    final muted =
+        filtered.where((status) => mutedSet.contains(status.userId)).toList();
+    final ownStatuses = active.where((s) => s.userId == currentUserId).toList();
+    final contactActive =
+        active.where((s) => s.userId != currentUserId).toList();
+    final contactMuted = muted.where((s) => s.userId != currentUserId).toList();
+    final hasStatuses = active.isNotEmpty || muted.isNotEmpty;
+    logger.fine(
+        'contacts=${contactsState.contacts.length}, allowed=${allowedUserIds.length}, active=${active.length}, muted=${muted.length}, own=${ownStatuses.length}, contactActive=${contactActive.length}, allowedSet=$allowedUserIds, statusUserIds=${state.statuses.map((s) => s.userId).toList()}');
+    logger.fine(
+        'contacts detail=${contactsState.contacts.map((c) => '${c.name}:${c.id}/${c.accountUserId} has=${c.hasAccount}').toList()}');
+
+    final sections = <Widget>[
+      _ComposerCard(onTap: () => _openComposer(context)),
+      if (ownStatuses.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        const _SectionHeader(
+            title: 'Vos statuts', subtitle: 'Consultables par vos contacts'),
+        const SizedBox(height: 8),
+        ...ownStatuses.map((status) => _StatusTile(
+              status: status,
+              isOwner: true,
+              isMuted: false,
+              onViewed: () => controller.markViewed(status.id),
+              onToggleMute: () => controller.toggleMute(status.userId),
+              onToggleBlock: () => _confirmBlock(context, controller, status),
+              onDownload: () => _downloadStatus(context, controller, status),
+              onOpen: () => _openViewer(
+                context: context,
+                ref: ref,
+                statuses: [...ownStatuses, ...contactActive, ...contactMuted],
+                initialStatusId: status.id,
+              ),
+            )),
+      ],
+      if (contactActive.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        const _SectionHeader(
+            title: 'Contacts', subtitle: 'Statuts de vos contacts'),
+        const SizedBox(height: 8),
+        ...contactActive.map((status) => _StatusTile(
+              status: status,
+              isOwner: false,
+              isMuted: false,
+              onViewed: () => controller.markViewed(status.id),
+              onToggleMute: () => controller.toggleMute(status.userId),
+              onToggleBlock: () => _confirmBlock(context, controller, status),
+              onDownload: () => _downloadStatus(context, controller, status),
+              onOpen: () => _openViewer(
+                context: context,
+                ref: ref,
+                statuses: [...ownStatuses, ...contactActive, ...contactMuted],
+                initialStatusId: status.id,
+              ),
+            )),
+      ],
+      if (contactMuted.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        const _MutedSectionHeader(),
+        const SizedBox(height: 8),
+        ...contactMuted.map((status) => _StatusTile(
+              status: status,
+              isOwner: false,
+              isMuted: true,
+              onViewed: () => controller.markViewed(status.id),
+              onToggleMute: () => controller.toggleMute(status.userId),
+              onToggleBlock: () => _confirmBlock(context, controller, status),
+              onDownload: () => _downloadStatus(context, controller, status),
+              onOpen: () => _openViewer(
+                context: context,
+                ref: ref,
+                statuses: [...ownStatuses, ...contactActive, ...contactMuted],
+                initialStatusId: status.id,
+              ),
+            )),
+      ],
+      const SizedBox(height: 120),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -45,13 +133,13 @@ class StatusScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Chip(
-                backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                backgroundColor:
+                    Theme.of(context).colorScheme.secondaryContainer,
                 label: Text(
                   '${state.unseenCount} nouveaux',
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelMedium
-                      ?.copyWith(color: Theme.of(context).colorScheme.onSecondaryContainer),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color:
+                          Theme.of(context).colorScheme.onSecondaryContainer),
                 ),
               ),
             ),
@@ -75,46 +163,9 @@ class StatusScreen extends ConsumerWidget {
               ? const _StatusLoading()
               : !hasStatuses
                   ? const _EmptyStatus()
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-                      itemCount: 1 +
-                          activeStatuses.length +
-                          (mutedStatuses.isNotEmpty ? 1 + mutedStatuses.length : 0),
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        if (index == 0) {
-                          return _ComposerCard(onTap: () => _openComposer(context));
-                        }
-                        index -= 1;
-                        if (index < activeStatuses.length) {
-                          final status = activeStatuses[index];
-                          return _StatusTile(
-                            status: status,
-                            isMuted: false,
-                            onViewed: () => controller.markViewed(status.id),
-                            onToggleMute: () => controller.toggleMute(status.userId),
-                            onToggleBlock: () => _confirmBlock(context, controller, status),
-                            onDownload: () => _downloadStatus(context, controller, status),
-                          );
-                        }
-                        index -= activeStatuses.length;
-                        if (mutedStatuses.isNotEmpty) {
-                          if (index == 0) {
-                            return const _MutedSectionHeader();
-                          }
-                          index -= 1;
-                          final status = mutedStatuses[index];
-                          return _StatusTile(
-                            status: status,
-                            isMuted: true,
-                            onViewed: () => controller.markViewed(status.id),
-                            onToggleMute: () => controller.toggleMute(status.userId),
-                            onToggleBlock: () => _confirmBlock(context, controller, status),
-                            onDownload: () => _downloadStatus(context, controller, status),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      children: sections,
                     ),
         ),
       ),
@@ -129,6 +180,24 @@ class StatusScreen extends ConsumerWidget {
       builder: (context) => const _StatusComposerSheet(),
     );
   }
+
+  void _openViewer({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<Status> statuses,
+    required String initialStatusId,
+  }) {
+    final index = statuses.indexWhere((s) => s.id == initialStatusId);
+    if (index < 0) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _StatusViewerScreen(
+          statuses: statuses,
+          initialIndex: index,
+        ),
+      ),
+    );
+  }
 }
 
 Future<void> _downloadStatus(
@@ -139,7 +208,7 @@ Future<void> _downloadStatus(
   final result = await controller.download(status);
   if (result is Success<String>) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Statut enregistré dans ${result.value}')),
+      SnackBar(content: Text('Statut enregistrÃ© dans ${result.value}')),
     );
   } else if (result is Failure<String>) {
     final error = result.error;
@@ -160,7 +229,7 @@ Future<void> _confirmBlock(
     builder: (context) => AlertDialog(
       title: const Text('Bloquer ce statut ?'),
       content: Text(
-        'Les statuts de ${status.userName ?? 'ce contact'} ne seront plus affichés. Vous pourrez les réactiver depuis vos paramètres.',
+        'Les statuts de ${status.userName ?? 'ce contact'} ne seront plus affichÃ©s. Vous pourrez les rÃ©activer depuis vos paramÃ¨tres.',
       ),
       actions: [
         TextButton(
@@ -177,7 +246,39 @@ Future<void> _confirmBlock(
   if (confirm == true) {
     await controller.toggleBlock(status.userId);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Statuts de ${status.userName ?? 'ce contact'} bloqués.')),
+      SnackBar(
+          content:
+              Text('Statuts de ${status.userName ?? 'ce contact'} bloquÃ©s.')),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+      ],
     );
   }
 }
@@ -201,7 +302,8 @@ class _ComposerCard extends StatelessWidget {
               CircleAvatar(
                 radius: 26,
                 backgroundColor: colors.secondaryContainer,
-                child: Icon(Icons.add_a_photo_outlined, color: colors.secondary),
+                child:
+                    Icon(Icons.add_a_photo_outlined, color: colors.secondary),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -225,24 +327,31 @@ class _ComposerCard extends StatelessWidget {
 class _StatusTile extends StatelessWidget {
   const _StatusTile({
     required this.status,
+    required this.isOwner,
     required this.isMuted,
     required this.onViewed,
     required this.onToggleMute,
     required this.onToggleBlock,
     this.onDownload,
+    this.onOpen,
   });
 
   final Status status;
+  final bool isOwner;
   final bool isMuted;
   final Future<void> Function() onViewed;
   final Future<void> Function() onToggleMute;
   final Future<void> Function() onToggleBlock;
   final Future<void> Function()? onDownload;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final timeLabel = DateFormat('dd MMM • HH:mm').format(status.createdAt);
+    final timeLabel =
+        DateFormat('dd MMM \u00e0 HH:mm').format(status.createdAt);
+    final subtitle =
+        isOwner ? '$timeLabel - ${status.viewCount} vues' : timeLabel;
     final borderColor = isMuted
         ? colors.outlineVariant
         : status.hasViewed
@@ -258,6 +367,7 @@ class _StatusTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(24),
           onTap: () async {
             await onViewed();
+            onOpen?.call();
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -272,8 +382,9 @@ class _StatusTile extends StatelessWidget {
                   ),
                   child: CircleAvatar(
                     radius: 30,
-                    backgroundImage:
-                        status.userAvatar != null ? NetworkImage(status.userAvatar!) : null,
+                    backgroundImage: status.userAvatar != null
+                        ? NetworkImage(status.userAvatar!)
+                        : null,
                     child: status.userAvatar == null
                         ? Text(
                             (status.userName?.isNotEmpty ?? false)
@@ -308,7 +419,8 @@ class _StatusTile extends StatelessWidget {
                           if (isMuted)
                             Container(
                               margin: const EdgeInsets.only(left: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 color: colors.surfaceVariant,
                                 borderRadius: BorderRadius.circular(16),
@@ -339,7 +451,7 @@ class _StatusTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '$timeLabel • ${status.viewCount} vues',
+                        subtitle,
                         style: Theme.of(context)
                             .textTheme
                             .labelSmall
@@ -361,7 +473,7 @@ class _StatusTile extends StatelessWidget {
                   ),
                 ],
                 PopupMenuButton<_StatusAction>(
-                  tooltip: 'Plus d\'actions',
+                  tooltip: "Plus d'actions",
                   onSelected: (action) async {
                     switch (action) {
                       case _StatusAction.download:
@@ -405,8 +517,12 @@ class _StatusTile extends StatelessWidget {
                         PopupMenuItem<_StatusAction>(
                           value: _StatusAction.mute,
                           child: ListTile(
-                            leading: Icon(isMuted ? Icons.volume_up_rounded : Icons.volume_off_rounded),
-                            title: Text(isMuted ? 'Réactiver ce statut' : 'Muter ce statut'),
+                            leading: Icon(isMuted
+                                ? Icons.volume_up_rounded
+                                : Icons.volume_off_rounded),
+                            title: Text(isMuted
+                                ? 'Réactiver ce statut'
+                                : 'Muter ce statut'),
                           ),
                         ),
                       )
@@ -443,9 +559,11 @@ class _MutedSectionHeader extends StatelessWidget {
           const Icon(Icons.volume_off_rounded),
           const SizedBox(width: 8),
           Text(
-            'Statuts masqués',
-            style:
-                Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+            'Statuts masquÃ©s',
+            style: Theme.of(context)
+                .textTheme
+                .labelLarge
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -459,7 +577,8 @@ class _StatusComposerSheet extends ConsumerStatefulWidget {
   const _StatusComposerSheet();
 
   @override
-  ConsumerState<_StatusComposerSheet> createState() => _StatusComposerSheetState();
+  ConsumerState<_StatusComposerSheet> createState() =>
+      _StatusComposerSheetState();
 }
 
 class _StatusComposerSheetState extends ConsumerState<_StatusComposerSheet> {
@@ -494,7 +613,7 @@ class _StatusComposerSheetState extends ConsumerState<_StatusComposerSheet> {
               Icon(Icons.auto_awesome_rounded, color: colors.primary),
               const SizedBox(width: 12),
               Text(
-                'Créer un statut',
+                'Creer un statut',
                 style: Theme.of(context)
                     .textTheme
                     .titleLarge
@@ -513,7 +632,7 @@ class _StatusComposerSheetState extends ConsumerState<_StatusComposerSheet> {
             controller: _controller,
             maxLines: 3,
             decoration: const InputDecoration(
-              hintText: 'Exprimez-vous…',
+              hintText: 'Exprimez-vousâ€¦',
             ),
           ),
           const SizedBox(height: 16),
@@ -550,7 +669,7 @@ class _StatusComposerSheetState extends ConsumerState<_StatusComposerSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.send_rounded),
-                label: Text(_isSubmitting ? 'Envoi…' : 'Partager'),
+                label: Text(_isSubmitting ? 'Envoiâ€¦' : 'Partager'),
               ),
             ],
           ),
@@ -560,7 +679,8 @@ class _StatusComposerSheetState extends ConsumerState<_StatusComposerSheet> {
   }
 
   Future<void> _pickImage() async {
-    final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final file =
+        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (file != null) {
       final bytes = await file.readAsBytes();
       setState(() {
@@ -600,7 +720,8 @@ class _StatusComposerSheetState extends ConsumerState<_StatusComposerSheet> {
         _previewBytes!,
         filename: filename,
       );
-      result = await notifier.publishMedia(file: multipart, caption: content.isNotEmpty ? content : null);
+      result = await notifier.publishMedia(
+          file: multipart, caption: content.isNotEmpty ? content : null);
     } else {
       result = await notifier.publishText(content);
     }
@@ -612,7 +733,7 @@ class _StatusComposerSheetState extends ConsumerState<_StatusComposerSheet> {
     if (result is Success<Status>) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Statut partagé avec succès !')),
+        const SnackBar(content: Text('Statut partage avec succes !')),
       );
       Navigator.of(context).maybePop();
     } else if (result is Failure<Status>) {
@@ -652,10 +773,11 @@ class _EmptyStatus extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.burst_mode_rounded, size: 72, color: Theme.of(context).colorScheme.primary),
+            Icon(Icons.burst_mode_rounded,
+                size: 72, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 16),
             Text(
-              'Partagez votre première story',
+              'Partagez votre premiere story',
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
@@ -724,6 +846,543 @@ class _StatusSkeletonState extends State<_StatusSkeleton>
           ),
         );
       },
+    );
+  }
+}
+
+class _StatusViewerScreen extends ConsumerStatefulWidget {
+  const _StatusViewerScreen({
+    required this.statuses,
+    required this.initialIndex,
+  });
+
+  final List<Status> statuses;
+  final int initialIndex;
+
+  @override
+  ConsumerState<_StatusViewerScreen> createState() =>
+      _StatusViewerScreenState();
+}
+
+class _StatusViewerScreenState extends ConsumerState<_StatusViewerScreen> {
+  late final PageController _controller;
+  late List<Status> _statuses;
+  late List<double> _progress;
+  late int _currentIndex;
+  final _replyController = TextEditingController();
+  Timer? _timer;
+  bool _isPaused = false;
+  bool _chromeVisible = true;
+  Timer? _chromeTimer;
+  bool _viewersSheetOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _statuses = List<Status>.from(widget.statuses);
+    _progress = List<double>.filled(_statuses.length, 0);
+    _currentIndex = widget.initialIndex;
+    _controller = PageController(initialPage: widget.initialIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markViewed(_currentIndex);
+      _prefetchAround(_currentIndex);
+      _startProgress(reset: true);
+      _scheduleHideChrome();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _chromeTimer?.cancel();
+    _replyController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _markViewed(int index) {
+    if (index < 0 || index >= _statuses.length) return;
+    final status = _statuses[index];
+    if (status.hasViewed) return;
+    ref.read(statusControllerProvider.notifier).markViewed(status.id);
+    setState(() {
+      _statuses[index] =
+          status.copyWith(hasViewed: true, viewCount: status.viewCount + 1);
+    });
+  }
+
+  int _statusDurationMs(Status status) {
+    final url = status.mediaUrl ?? '';
+    final isVideo =
+        url.endsWith('.mp4') || url.endsWith('.mov') || url.endsWith('.mkv');
+    final isImage = url.isNotEmpty && !isVideo;
+    if (isVideo) return 30000;
+    if (isImage) return 15000;
+    return 8000;
+  }
+
+  void _startProgress({bool reset = false}) {
+    _timer?.cancel();
+    if (reset) {
+      setState(() {
+        _progress[_currentIndex] = 0;
+      });
+    }
+    final totalMs = _statusDurationMs(_statuses[_currentIndex]);
+    _timer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
+      if (!mounted || _isPaused) return;
+      setState(() {
+        _progress[_currentIndex] =
+            (_progress[_currentIndex] + 80 / totalMs).clamp(0, 1);
+      });
+      if (_progress[_currentIndex] >= 1) {
+        _goTo(index: _currentIndex + 1, resetProgress: true);
+      }
+    });
+  }
+
+  void _prefetchAround(int index) {
+    for (final i in [index - 1, index + 1]) {
+      if (i >= 0 && i < _statuses.length) {
+        final url = _statuses[i].mediaUrl;
+        if (url != null && url.isNotEmpty) {
+          precacheImage(NetworkImage(url), context);
+        }
+      }
+    }
+  }
+
+  void _goTo({required int index, bool resetProgress = false}) {
+    if (index < 0) return;
+    if (index >= _statuses.length) {
+      if (_viewersSheetOpen && Navigator.of(context).canPop()) {
+        Navigator.of(context).maybePop();
+      }
+      Navigator.of(context).maybePop();
+      return;
+    }
+    _controller.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+    );
+    _currentIndex = index;
+    _markViewed(index);
+    _prefetchAround(index);
+    _startProgress(reset: resetProgress);
+    _scheduleHideChrome();
+  }
+
+  void _scheduleHideChrome() {
+    _chromeTimer?.cancel();
+    _chromeTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() => _chromeVisible = false);
+    });
+  }
+
+  void _toggleChrome() {
+    setState(() => _chromeVisible = !_chromeVisible);
+    if (_chromeVisible) _scheduleHideChrome();
+  }
+
+  Future<void> _sendReply(Status status, String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    _replyController.clear();
+    try {
+      final contact = Contact(
+        id: status.userId,
+        name: status.userName ?? 'Contact',
+        phone: '',
+        hasAccount: true,
+      );
+      final chat = await ref
+          .read(contactsControllerProvider.notifier)
+          .startChat(contact);
+      await ref
+          .read(chatControllerProvider.notifier)
+          .sendMessage(chat.id, trimmed);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reponse envoyee a ${contact.name}')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reponse impossible : $error')),
+      );
+    }
+  }
+
+  String _formatViewedAt(Contact viewer) {
+    final raw = viewer.lastInteraction ?? DateTime.now();
+    final label = DateFormat('dd MMM Ã  HH:mm').format(raw);
+    final phone = viewer.phone.isNotEmpty ? viewer.phone : 'Contact';
+    return '$phone Â· vu $label';
+  }
+
+  void _showViewers(Status status) {
+    final isOwner = ref.read(authControllerProvider).user?.id == status.userId;
+    _viewersSheetOpen = true;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (context) => FutureBuilder<Result<List<Contact>>>(
+        future:
+            ref.read(statusControllerProvider.notifier).fetchViewers(status.id),
+        builder: (context, snapshot) {
+          final result = snapshot.data;
+          final viewers =
+              result is Success<List<Contact>> ? result.value : <Contact>[];
+          final isLoading = snapshot.connectionState == ConnectionState.waiting;
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.remove_red_eye),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Vues du statut',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const Spacer(),
+                    if (isOwner) Text('${status.viewCount}'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else if (result is Failure<List<Contact>>)
+                  Text(
+                    'Impossible de charger les vues: ${result.error}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  )
+                else if (viewers.isEmpty)
+                  Text(
+                    'Aucun viewer pour l\'instant.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  )
+                else
+                  ...viewers.map(
+                    (viewer) {
+                      final displayName = viewer.name.isNotEmpty
+                          ? viewer.name
+                          : (viewer.phone.isNotEmpty
+                              ? viewer.phone
+                              : 'Contact');
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: viewer.avatarUrl != null
+                              ? NetworkImage(viewer.avatarUrl!)
+                              : null,
+                          child: viewer.avatarUrl == null
+                              ? Text(displayName.isNotEmpty
+                                  ? displayName[0].toUpperCase()
+                                  : '?')
+                              : null,
+                        ),
+                        title: Text(displayName),
+                        subtitle: Text(_formatViewedAt(viewer)),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    ).whenComplete(() => _viewersSheetOpen = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUserId = ref.watch(authControllerProvider).user?.id;
+    const reactions = ['ðŸ‘', 'â¤ï¸', 'ðŸ”¥', 'ðŸ˜‚', 'ðŸ‘'];
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (details) {
+            final size = MediaQuery.of(context).size;
+            final isRight = details.localPosition.dx > size.width / 2;
+            final page = _controller.page ?? _controller.initialPage.toDouble();
+            final next = isRight ? page.ceil() + 1 : page.floor() - 1;
+            _goTo(index: next, resetProgress: true);
+            _toggleChrome();
+          },
+          onLongPressStart: (_) => setState(() => _isPaused = true),
+          onLongPressEnd: (_) => setState(() => _isPaused = false),
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: _controller,
+                onPageChanged: (index) {
+                  _currentIndex = index;
+                  _markViewed(index);
+                  _prefetchAround(index);
+                  _startProgress(reset: true);
+                  _scheduleHideChrome();
+                },
+                itemCount: _statuses.length,
+                itemBuilder: (context, index) {
+                  final status = _statuses[index];
+                  final createdLabel =
+                      DateFormat('dd MMM a HH:mm').format(status.createdAt);
+                  final isOwner = currentUserId != null &&
+                      status.userId.toString() == currentUserId.toString();
+                  final durationLabel =
+                      '${(_statusDurationMs(status) / 1000).round()}s';
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: status.mediaUrl != null
+                            ? Image.network(
+                                status.mediaUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: Colors.black,
+                                  alignment: Alignment.center,
+                                  child: const Icon(Icons.broken_image_rounded,
+                                      color: Colors.white70, size: 64),
+                                ),
+                              )
+                            : Container(
+                                decoration: const BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Color(0xFF1E1E2E),
+                                      Color(0xFF0D0D11)
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                ),
+                                padding: const EdgeInsets.all(24),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  status.content ?? '',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                      ),
+                      if (_chromeVisible)
+                        Positioned(
+                          top: 12,
+                          left: 12,
+                          right: 12,
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white24,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: FractionallySizedBox(
+                                        alignment: Alignment.centerLeft,
+                                        widthFactor: _progress[_currentIndex]
+                                            .clamp(0, 1),
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(durationLabel,
+                                      style: const TextStyle(
+                                          color: Colors.white70, fontSize: 12)),
+                                  IconButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).maybePop(),
+                                    icon: const Icon(Icons.close_rounded,
+                                        color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: Colors.white12,
+                                    backgroundImage: status.userAvatar != null
+                                        ? NetworkImage(status.userAvatar!)
+                                        : null,
+                                    child: status.userAvatar == null
+                                        ? Text(
+                                            (status.userName?.isNotEmpty ??
+                                                    false)
+                                                ? status.userName![0]
+                                                    .toUpperCase()
+                                                : '?',
+                                            style: const TextStyle(
+                                                color: Colors.white),
+                                          )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          status.userName ?? 'Contact',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          createdLabel,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelMedium
+                                              ?.copyWith(color: Colors.white70),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isOwner)
+                                    TextButton.icon(
+                                      onPressed: () => _showViewers(status),
+                                      icon: const Icon(Icons.remove_red_eye,
+                                          color: Colors.white),
+                                      label: Text(
+                                        '${status.viewCount}',
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (status.content != null &&
+                          status.mediaUrl != null &&
+                          _chromeVisible)
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 120,
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              status.content!,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              if (_chromeVisible)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 64,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: reactions
+                        .map(
+                          (emoji) => IconButton(
+                            onPressed: () =>
+                                _sendReply(_statuses[_currentIndex], emoji),
+                            icon: Text(emoji,
+                                style: const TextStyle(fontSize: 22)),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              if (_chromeVisible)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _replyController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Repondreâ€¦',
+                            hintStyle: const TextStyle(color: Colors.white70),
+                            filled: true,
+                            fillColor: Colors.black54,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      CircleAvatar(
+                        backgroundColor: Colors.greenAccent,
+                        child: IconButton(
+                          icon: const Icon(Icons.send_rounded,
+                              color: Colors.black87),
+                          onPressed: () {
+                            final status = _statuses[_currentIndex];
+                            _sendReply(status, _replyController.text);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

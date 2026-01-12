@@ -1,9 +1,12 @@
+import '../utils/url_utils.dart';
+
 class Status {
   const Status({
     required this.id,
     required this.userId,
     required this.createdAt,
     required this.expiresAt,
+    this.durationSeconds,
     this.content,
     this.mediaUrl,
     this.userName,
@@ -16,14 +19,23 @@ class Status {
     return Status(
       id: json['id'].toString(),
       userId: json['userId']?.toString() ?? json['user_id']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? json['created_at'] as String? ?? '') ??
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ??
+              json['created_at'] as String? ??
+              '') ??
           DateTime.now(),
-      expiresAt: DateTime.tryParse(json['expiresAt'] as String? ?? json['expires_at'] as String? ?? '') ??
+      expiresAt: DateTime.tryParse(json['expiresAt'] as String? ??
+              json['expires_at'] as String? ??
+              '') ??
           DateTime.now().add(const Duration(hours: 24)),
+      durationSeconds: _asInt(json['durationSeconds'] ?? json['duration']),
       content: json['content'] as String?,
-      mediaUrl: json['mediaUrl'] as String? ?? json['media_url'] as String?,
+      mediaUrl: UrlUtils.resolveMediaUrl(
+        json['mediaUrl'] as String? ?? json['media_url'] as String?,
+      ),
       userName: json['userName'] as String? ?? json['user_name'] as String?,
-      userAvatar: json['userAvatar'] as String? ?? json['user_avatar'] as String?,
+      userAvatar: UrlUtils.resolveMediaUrl(
+        json['userAvatar'] as String? ?? json['user_avatar'] as String?,
+      ),
       viewCount: _asInt(json['viewCount'] ?? json['view_count']),
       hasViewed: (json['hasViewed'] ?? json['has_viewed']) == true ||
           (json['hasViewed'] == 1 || json['has_viewed'] == 1),
@@ -34,6 +46,7 @@ class Status {
   final String userId;
   final DateTime createdAt;
   final DateTime expiresAt;
+  final int? durationSeconds;
   final String? content;
   final String? mediaUrl;
   final String? userName;
@@ -44,12 +57,14 @@ class Status {
   Status copyWith({
     bool? hasViewed,
     int? viewCount,
+    int? durationSeconds,
   }) {
     return Status(
       id: id,
       userId: userId,
       createdAt: createdAt,
       expiresAt: expiresAt,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
       content: content,
       mediaUrl: mediaUrl,
       userName: userName,

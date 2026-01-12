@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'app.dart';
 import 'core/services/api_client.dart';
@@ -10,11 +11,12 @@ import 'core/storage/secure_storage.dart';
 import 'core/utils/provider_logger.dart';
 import 'core/services/notification_service_provider.dart';
 
-
 /// Entry point of the application.
 Future<void> main() async {
   // Ensures Flutter engine + plugins are initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  await initializeDateFormatting();
 
   // Configure application logging before anything else
   final logService = await LogService.create();

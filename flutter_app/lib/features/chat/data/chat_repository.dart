@@ -19,18 +19,31 @@ class ChatRepository {
 
   Future<List<Chat>> fetchChats() async {
     final payload = await _client.get('/chats');
-    final items = payload['chats'] as List<dynamic>? ?? payload['data'] as List<dynamic>? ?? [];
-    return items.map((item) => Chat.fromJson(item as Map<String, dynamic>)).toList();
+    final items = payload['chats'] as List<dynamic>? ??
+        payload['data'] as List<dynamic>? ??
+        [];
+    return items
+        .map((item) => Chat.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<Message>> fetchMessages(String chatId) async {
-    final payload = await _client.get('/chats/$chatId/messages');
-    final items = payload['messages'] as List<dynamic>? ?? payload['data'] as List<dynamic>? ?? [];
-    return items.map((item) => Message.fromJson(item as Map<String, dynamic>)).toList();
+    final payload = await _client.get('/messages/chat/$chatId');
+    final items = payload['messages'] as List<dynamic>? ??
+        payload['data'] as List<dynamic>? ??
+        [];
+    return items
+        .map((item) => Message.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<Message> sendMessage(String chatId, String content) async {
-    final payload = await _client.post('/chats/$chatId/messages', data: {'content': content});
+  Future<Message> sendMessage(String chatId, String content,
+      {String? clientId}) async {
+    final payload = await _client.post('/messages', data: {
+      'chatId': chatId,
+      'text': content,
+      if (clientId != null) 'clientId': clientId,
+    });
     final message = payload['message'] as Map<String, dynamic>? ?? payload;
     final parsed = Message.fromJson(message);
     _socketService.pushLocalMessage(parsed.toJson());

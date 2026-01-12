@@ -4,61 +4,65 @@ import 'package:flutter/services.dart';
 class AppTheme {
   const AppTheme._();
 
-  static const _whatsAppGreen = Color(0xFF075E54);
-  static const _whatsAppLight = Color(0xFFECE5DD);
-  static const _accent = Color(0xFF25D366);
-  static const _night = Color(0xFF0B141A);
+  // Brand palette
+  static const _gazavbaDark = Color(0xFF09392D);
+  static const _gazavbaGreen = Color(0xFF389038);
+  static const _gazavbaLight = Color(0xFF94D358);
+  static const _gazavbaYellow = Color(0xFFFFC80D);
+
+  static const _lightSurface = Color(0xFFF3F8F1);
+  static const _darkSurface = Color(0xFF09392D);
 
   static const ColorScheme _lightColors = ColorScheme(
     brightness: Brightness.light,
-    primary: _whatsAppGreen,
+    primary: _gazavbaGreen,
     onPrimary: Colors.white,
-    secondary: _accent,
-    onSecondary: Colors.white,
+    secondary: _gazavbaLight,
+    onSecondary: _gazavbaDark,
+    tertiary: _gazavbaYellow,
+    onTertiary: _gazavbaDark,
     error: Color(0xFFBA1A1A),
     onError: Colors.white,
-    background: _whatsAppLight,
-    onBackground: Color(0xFF111B21),
+    // background: _lightSurface, // Deprecated
+    // onBackground: _gazavbaDark, // Deprecated
     surface: Colors.white,
-    onSurface: Color(0xFF111B21),
-    surfaceVariant: Color(0xFFF2F5F8),
-    onSurfaceVariant: Color(0xFF54656F),
-    tertiary: Color(0xFF34B7F1),
-    onTertiary: Colors.white,
-    outline: Color(0xFFCFD9DE),
-    outlineVariant: Color(0xFFD8E2EB),
+    onSurface: _gazavbaDark,
+    surfaceVariant: Color(0xFFE1EFE0),
+    onSurfaceVariant: Color(0xFF3B524B),
+    outline: Color(0xFF79747E),
+    outlineVariant: Color(0xFFC4C8BB),
     shadow: Colors.black54,
     scrim: Colors.black87,
-    inverseSurface: Color(0xFF1E2C34),
-    onInverseSurface: Colors.white,
-    inversePrimary: _accent,
-    surfaceTint: _whatsAppGreen,
+    inverseSurface: _gazavbaDark,
+    onInverseSurface: _gazavbaYellow,
+    inversePrimary: _gazavbaLight,
+    surfaceTint: _gazavbaGreen,
   );
 
   static const ColorScheme _darkColors = ColorScheme(
     brightness: Brightness.dark,
-    primary: _accent,
-    onPrimary: Colors.black,
-    secondary: Color(0xFF128C7E),
-    onSecondary: Colors.white,
+    primary: _gazavbaLight,
+    onPrimary: _gazavbaDark,
+    secondary: _gazavbaYellow,
+    onSecondary: _gazavbaDark,
+    tertiary: _gazavbaGreen,
+    onTertiary: Colors.white,
     error: Color(0xFFFFB4AB),
     onError: Color(0xFF690005),
-    background: _night,
-    onBackground: Color(0xFFE9EDEF),
-    surface: Color(0xFF1E2C34),
-    onSurface: Color(0xFFE9EDEF),
-    surfaceVariant: Color(0xFF24313A),
-    onSurfaceVariant: Color(0xFFB3BDC6),
-    tertiary: Color(0xFF34B7F1),
-    onTertiary: Colors.black,
-    outline: Color(0xFF334049),
-    outlineVariant: Color(0xFF1A242B),
+    // background: _darkSurface, // Deprecated
+    // onBackground: Color(0xFFE7F4E5), // Deprecated
+    surface: _darkSurface,
+    onSurface: Color(0xFFE7F4E5),
+    surfaceVariant: Color(0xFF144D3D),
+    onSurfaceVariant: Color(0xFFC6D9CF),
+    outline: Color(0xFF8D9199),
+    outlineVariant: Color(0xFF43474E),
     shadow: Colors.black,
     scrim: Colors.black87,
-    inverseSurface: _whatsAppLight,
-    onInverseSurface: Color(0xFF111B21),
-    inversePrimary: _whatsAppGreen,
-    surfaceTint: Color(0xFF128C7E),
+    inverseSurface: _lightSurface,
+    onInverseSurface: _gazavbaDark,
+    inversePrimary: _gazavbaGreen,
+    surfaceTint: _gazavbaLight,
   );
 
   static ThemeData get light => _buildTheme(_lightColors, Brightness.light);
@@ -78,7 +82,8 @@ class AppTheme {
     );
 
     return base.copyWith(
-      scaffoldBackgroundColor: colors.background,
+      scaffoldBackgroundColor:
+          brightness == Brightness.light ? _lightSurface : _darkSurface,
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: colors.surface,
@@ -87,6 +92,7 @@ class AppTheme {
         centerTitle: true,
         titleTextStyle: textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w700,
+          color: colors.onSurface,
         ),
         systemOverlayStyle: brightness == Brightness.dark
             ? SystemUiOverlayStyle.light
@@ -94,19 +100,19 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colors.surface,
-        indicatorColor: colors.secondary.withOpacity(0.18),
+        indicatorColor: colors.primary.withOpacity(0.3),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        iconTheme: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
-            return IconThemeData(color: colors.primary);
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return IconThemeData(color: colors.onPrimary);
           }
           return IconThemeData(color: colors.onSurfaceVariant);
         }),
-        labelTextStyle: MaterialStateProperty.resolveWith((states) {
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final style = textTheme.labelMedium;
-          if (states.contains(MaterialState.selected)) {
+          if (states.contains(WidgetState.selected)) {
             return style?.copyWith(
-              color: colors.primary,
+              color: colors.onSurface,
               fontWeight: FontWeight.w600,
             );
           }
@@ -131,33 +137,34 @@ class AppTheme {
           foregroundColor: colors.onPrimary,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           textStyle:
-          textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           textStyle:
-          textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: colors.primary,
-          textStyle: textTheme.labelLarge,
+          foregroundColor: colors.secondary,
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: colors.secondary,
-        foregroundColor: colors.onSecondary,
+        backgroundColor: colors.tertiary,
+        foregroundColor: colors.onTertiary,
       ),
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: colors.surfaceVariant,
-        selectedColor: colors.secondary.withOpacity(0.18),
+        selectedColor: colors.primary.withOpacity(0.2),
         labelStyle: textTheme.labelMedium,
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -171,10 +178,10 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(24),
-          borderSide: BorderSide(color: colors.primary),
+          borderSide: BorderSide(color: colors.primary, width: 2),
         ),
         contentPadding:
-        const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         hintStyle: textTheme.bodyMedium?.copyWith(
           color: colors.onSurfaceVariant,
         ),
@@ -184,23 +191,23 @@ class AppTheme {
         space: 0,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: colors.surface,
+        backgroundColor: colors.inverseSurface,
         contentTextStyle:
-        textTheme.bodyMedium?.copyWith(color: colors.onSurface),
-        actionTextColor: colors.secondary,
+            textTheme.bodyMedium?.copyWith(color: colors.onInverseSurface),
+        actionTextColor: colors.primary,
         elevation: 4,
         behavior: SnackBarBehavior.floating,
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
-            return colors.secondary;
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return colors.primary;
           }
           return colors.outlineVariant;
         }),
-        trackColor: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
-            return colors.secondary.withOpacity(0.35);
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return colors.primary.withOpacity(0.35);
           }
           return colors.outline.withOpacity(0.2);
         }),

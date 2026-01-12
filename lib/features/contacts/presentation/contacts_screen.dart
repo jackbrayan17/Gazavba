@@ -1,17 +1,38 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/services.dart';
 
+import '../../../core/models/chat.dart';
 import '../../../core/models/contact.dart';
 import '../../auth/controllers/auth_controller.dart';
 import '../../chat/controllers/chat_controller.dart';
 import '../controllers/contacts_controller.dart';
+import '../../chat/presentation/create_group_screen.dart';
 
-class ContactsScreen extends ConsumerWidget {
+class ContactsScreen extends ConsumerStatefulWidget {
   const ContactsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ContactsScreen> createState() => _ContactsScreenState();
+}
+
+class _ContactsScreenState extends ConsumerState<ContactsScreen> {
+  static const _inviteLink = 'https://gazavba.eeuez.com';
+  final _searchController = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(contactsControllerProvider);
     final controller = ref.read(contactsControllerProvider.notifier);
     final authState = ref.watch(authControllerProvider);
@@ -21,6 +42,7 @@ class ContactsScreen extends ConsumerWidget {
       ..sort((a, b) => a.name.compareTo(b.name));
     final guests = contacts.where((c) => !c.hasAccount).toList()
       ..sort((a, b) => a.name.compareTo(b.name));
+    final searchActive = _searchController.text.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -28,7 +50,7 @@ class ContactsScreen extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: 'Actualiser',
-            onPressed: controller.loadContacts,
+            onPressed: () => controller.loadContacts(),
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -39,52 +61,123 @@ class ContactsScreen extends ConsumerWidget {
         label: const Text('Ajouter un contact'),
       ),
       body: RefreshIndicator(
-        onRefresh: controller.loadContacts,
+        onRefresh: () => controller.loadContacts(),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
           child: state.isLoading && contacts.isEmpty
               ? const _ContactsLoading()
-              : contacts.isEmpty
+              : contacts.isEmpty && !searchActive
                   ? const _EmptyContacts()
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                       children: [
+                        if (!searchActive) ...[
+                          ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.green,
+                              child: Icon(Icons.group_add, color: Colors.white),
+                            ),
+                            title: const Text('Nouveau groupe'),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const CreateGroupScreen()),
+                            ),
+                          ),
+                          ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.teal,
+                              child:
+                                  Icon(Icons.person_add, color: Colors.white),
+                            ),
+                            title: const Text('Nouveau contact'),
+                            onTap: () =>
+                                _openAddContactSheet(context, controller),
+                          ),
+                          const Divider(),
+                        ],
+                        _SearchBar(
+                          controller: _searchController,
+                          isSearching: state.isSearching,
+                          onChanged: _onSearchChanged,
+                          onClear: _clearSearch,
+                        ),
+                        if (searchActive) ...[
+                          const SizedBox(height: 12),
+                          _SectionHeader(
+                            title: 'Résultats du répertoire',
+                            subtitle: state.searchResults.isEmpty &&
+                                    !state.isSearching
+                                ? 'Aucun utilisateur trouvé pour cette recherche'
+                                : 'Appuyez pour discuter ou invitez',
+                          ),
+                          const SizedBox(height: 8),
+                          if (state.isSearching)
+                            ...List.generate(3, (_) => const _ShimmerTile())
+                          else
+                          ...state.searchResults.map(
+                            (contact) => _ContactTile(
+                              contact: contact,
+                              isPendingInvite: state.pendingInvites
+                                  .contains(contact.phone),
+                              onMessage: () =>
+                                  _startChat(context, ref, contact),
+                              onInvite: () =>
+                                  _handleInvite(context, controller, contact),
+                              onSave: () =>
+                                  _saveContact(context, controller, contact),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
                         if (registered.isNotEmpty) ...[
                           _SectionHeader(
                             title: 'Déjà sur Gazavba',
-                            subtitle: 'Lancez une conversation sécurisée en un clic',
+                            subtitle:
+                                'Lancez une conversation sécurisée en un clic',
                           ),
                           const SizedBox(height: 8),
                           ...registered.map(
                             (contact) => _ContactTile(
                               contact: contact,
-                              isPendingInvite: state.pendingInvites.contains(contact.phone),
-                              onMessage: () => _openMessageComposer(context, ref, contact),
-                              onInvite: () => controller.inviteContact(contact),
+                              isPendingInvite:
+                                  state.pendingInvites.contains(contact.phone),
+                              onMessage: () =>
+                                  _startChat(context, ref, contact),
+                              onInvite: () =>
+                                  _handleInvite(context, controller, contact),
+                              onSave: () =>
+                                  _saveContact(context, controller, contact),
                             ),
                           ),
                           const SizedBox(height: 24),
                         ],
-                        if (guests.isNotEmpty) ...[
+                        if (guests.isNotEmpty && !searchActive) ...[
                           _SectionHeader(
                             title: 'Inviter des amis',
-                            subtitle: 'Envoyez un lien d\'inscription multi-plateforme',
+                            subtitle:
+                                'Envoyez un lien d\'inscription multi-plateforme',
                           ),
                           const SizedBox(height: 8),
                           ...guests.map(
                             (contact) => _ContactTile(
                               contact: contact,
-                              isPendingInvite: state.pendingInvites.contains(contact.phone),
-                              onMessage: () => _openMessageComposer(context, ref, contact),
-                              onInvite: () => controller.inviteContact(contact),
+                              isPendingInvite:
+                                  state.pendingInvites.contains(contact.phone),
+                              onMessage: () =>
+                                  _startChat(context, ref, contact),
+                              onInvite: () =>
+                                  _handleInvite(context, controller, contact),
+                              onSave: () =>
+                                  _saveContact(context, controller, contact),
                             ),
                           ),
                         ],
                         const SizedBox(height: 32),
-                        if (authState.user != null)
+                        if (authState.user != null && !searchActive)
                           Card(
                             elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24)),
                             child: Padding(
                               padding: const EdgeInsets.all(20),
                               child: Column(
@@ -100,7 +193,8 @@ class ContactsScreen extends ConsumerWidget {
                                   const SizedBox(height: 6),
                                   Text(
                                     'Les contacts ayant déjà échangé avec vous sont mis en avant et leurs statuts apparaissent automatiquement.',
-                                    style: Theme.of(context).textTheme.bodyMedium,
+                                    style:
+                                        Theme.of(context).textTheme.bodyMedium,
                                   ),
                                 ],
                               ),
@@ -113,6 +207,69 @@ class ContactsScreen extends ConsumerWidget {
     );
   }
 
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      ref.read(contactsControllerProvider.notifier).searchDirectory(value);
+    });
+    setState(() {});
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    ref.read(contactsControllerProvider.notifier).searchDirectory('');
+    setState(() {});
+  }
+
+  Future<void> _saveContact(
+    BuildContext context,
+    ContactsController controller,
+    Contact contact,
+  ) async {
+    await controller.saveContact(contact);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${contact.name} ajouté à vos contacts.')),
+    );
+  }
+
+  Future<void> _startChat(
+      BuildContext context, WidgetRef ref, Contact contact) async {
+    final scaffold = ScaffoldMessenger.of(context);
+    try {
+      final Chat chat = await ref
+          .read(contactsControllerProvider.notifier)
+          .startChat(contact);
+      await ref.read(chatControllerProvider.notifier).loadChats();
+      if (!mounted) return;
+      context.go(
+        '/home/chats/conversation/${chat.id}',
+        extra: {'title': chat.title, 'chat': chat},
+      );
+    } catch (error) {
+      scaffold.showSnackBar(
+        SnackBar(content: Text('Impossible de démarrer le chat : $error')),
+      );
+    }
+  }
+
+  Future<void> _handleInvite(
+    BuildContext context,
+    ContactsController controller,
+    Contact contact,
+  ) async {
+    await Clipboard.setData(const ClipboardData(text: _inviteLink));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Lien copié: partagez https://gazavba.eeuez.com pour inviter'),
+        ),
+      );
+    }
+    await controller.inviteContact(contact);
+  }
+
   Future<void> _openAddContactSheet(
     BuildContext context,
     ContactsController controller,
@@ -121,20 +278,50 @@ class ContactsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      builder: (context) => _AddContactSheet(onSubmit: controller.addContact),
+      builder: (context) =>
+          _AddContactSheet(onSubmit: (c) => controller.addContact(c)),
     );
   }
+}
 
-  Future<void> _openMessageComposer(
-    BuildContext context,
-    WidgetRef ref,
-    Contact contact,
-  ) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      builder: (context) => _MessageSheet(contact: contact, ref: ref),
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({
+    required this.controller,
+    required this.isSearching,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final bool isSearching;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search),
+        hintText: 'Rechercher un utilisateur (nom, email ou téléphone)',
+        suffixIcon: isSearching
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : (controller.text.isNotEmpty
+                ? IconButton(
+                    onPressed: onClear,
+                    icon: const Icon(Icons.close_rounded),
+                  )
+                : null),
+      ),
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
     );
   }
 }
@@ -152,8 +339,10 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style:
-              Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
         Text(
@@ -173,87 +362,93 @@ class _ContactTile extends StatelessWidget {
     required this.isPendingInvite,
     required this.onMessage,
     required this.onInvite,
+    required this.onSave,
   });
 
   final Contact contact;
   final bool isPendingInvite;
   final VoidCallback onMessage;
   final VoidCallback onInvite;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        child: Row(
-          children: [
-            Hero(
-              tag: 'contact-${contact.id}',
-              child: CircleAvatar(
-                radius: 28,
-                backgroundImage:
-                    contact.avatarUrl != null ? NetworkImage(contact.avatarUrl!) : null,
-                child: contact.avatarUrl == null
-                    ? Text(contact.name.isNotEmpty ? contact.name[0] : '?')
-                    : null,
+    return GestureDetector(
+      onLongPress: contact.hasAccount ? onSave : null,
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            children: [
+              Hero(
+                tag: 'contact-${contact.id}',
+                child: CircleAvatar(
+                  radius: 28,
+                  backgroundImage: contact.avatarUrl != null
+                      ? NetworkImage(contact.avatarUrl!)
+                      : null,
+                  child: contact.avatarUrl == null
+                      ? Text(contact.name.isNotEmpty ? contact.name[0] : '?')
+                      : null,
+                ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    contact.name,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    contact.phone,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
-                  if (contact.lastInteraction != null) ...[
-                    const SizedBox(height: 4),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      'Dernière interaction: ${MaterialLocalizations.of(context).formatShortDate(contact.lastInteraction!)}',
+                      contact.name,
                       style: Theme.of(context)
                           .textTheme
-                          .labelSmall
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      contact.phone,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
                           ?.copyWith(color: colors.onSurfaceVariant),
                     ),
+                    if (contact.lastInteraction != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Dernière interaction: ${MaterialLocalizations.of(context).formatShortDate(contact.lastInteraction!)}',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: colors.onSurfaceVariant),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            contact.hasAccount
-                ? FilledButton.icon(
-                    onPressed: onMessage,
-                    icon: const Icon(Icons.lock_outline_rounded),
-                    label: const Text('Contacter'),
-                  )
-                : OutlinedButton.icon(
-                    onPressed: isPendingInvite ? null : onInvite,
-                    icon: isPendingInvite
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send_rounded),
-                    label: Text(isPendingInvite ? 'Envoi…' : 'Inviter'),
-                  ),
-          ],
+              const SizedBox(width: 12),
+              contact.hasAccount
+                  ? FilledButton.icon(
+                      onPressed: onMessage,
+                      icon: const Icon(Icons.chat_bubble_rounded),
+                      label: const Text('Contacter'),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: isPendingInvite ? null : onInvite,
+                      icon: isPendingInvite
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send_rounded),
+                      label: Text(isPendingInvite ? 'Envoi…' : 'Inviter'),
+                    ),
+            ],
+          ),
         ),
       ),
     );
@@ -286,11 +481,15 @@ class _EmptyContacts extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.people_alt_rounded, size: 72, color: Theme.of(context).colorScheme.primary),
+            Icon(Icons.people_alt_rounded,
+                size: 72, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 16),
             Text(
               'Ajoutez vos contacts',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
@@ -424,10 +623,12 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _phoneController,
-              decoration: const InputDecoration(labelText: 'Numéro de téléphone'),
+              decoration:
+                  const InputDecoration(labelText: 'Numéro de téléphone'),
               keyboardType: TextInputType.phone,
-              validator: (value) =>
-                  value == null || value.trim().isEmpty ? 'Téléphone requis' : null,
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Téléphone requis'
+                  : null,
             ),
             const SizedBox(height: 20),
             Align(
@@ -553,7 +754,7 @@ class _MessageSheetState extends State<_MessageSheet> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.lock_rounded),
+                  : const Icon(Icons.chat_bubble_rounded),
               label: Text(_isSending ? 'Envoi…' : 'Envoyer'),
             ),
           ),

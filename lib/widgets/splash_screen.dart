@@ -42,25 +42,13 @@ class _SplashScreenState extends State<SplashScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                height: 72,
-                width: 72,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.chat_bubble_rounded,
-                  size: 36,
-                  color: Theme.of(context).colorScheme.onPrimary,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Image.asset(
+                  'assets/images/gazavba.png',
+                  height: 72,
+                  width: 72,
+                  fit: BoxFit.cover,
                 ),
               ),
               const SizedBox(height: 24),
@@ -72,7 +60,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               const SizedBox(height: 12),
               Text(
-                'Initialisation sécurisée…',
+                'Initialisation securisee...',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],

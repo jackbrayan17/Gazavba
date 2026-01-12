@@ -13,7 +13,8 @@ final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   final client = ref.watch(apiClientProvider);
-  return AuthController(repository: repository, apiClient: client)..initialise();
+  return AuthController(repository: repository, apiClient: client)
+    ..initialise();
 });
 
 class AuthState {
@@ -64,10 +65,15 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final user = await repository.refreshProfile();
-      state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
+      state =
+          state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
     } catch (error) {
       await apiClient.clearToken();
-      state = state.copyWith(isLoading: false, error: error.toString(), user: null, bootstrapComplete: true);
+      state = state.copyWith(
+          isLoading: false,
+          error: error.toString(),
+          user: null,
+          bootstrapComplete: true);
     }
   }
 
@@ -75,7 +81,8 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final user = await repository.login(phone: phone, password: password);
-      state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
+      state =
+          state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();
       return Success(user);
     } on ApiException catch (error) {
@@ -102,7 +109,8 @@ class AuthController extends StateNotifier<AuthState> {
         avatarBytes: avatarBytes,
         avatarFileExtension: avatarFileExtension,
       );
-      state = state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
+      state =
+          state.copyWith(user: user, isLoading: false, bootstrapComplete: true);
       _startPresenceLoop();
       return Success(user);
     } on ApiException catch (error) {

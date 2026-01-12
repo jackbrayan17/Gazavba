@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -66,11 +67,16 @@ class ChatController extends StateNotifier<ChatState> {
   final ChatRepository repository;
   final SocketService socketService;
   StreamSubscription<Map<String, dynamic>>? _socketSubscription;
+  final Random _random = Random();
 
   Future<void> onAuthStateChanged(AuthState? previous, AuthState next) async {
     if (next.isAuthenticated) {
       await loadChats();
       await socketService.connect();
+      final userId = next.user?.id;
+      if (userId != null) {
+        socketService.joinUser(userId);
+      }
       _socketSubscription ??= socketService.messages.listen(_handleSocketEvent);
     } else {
       _socketSubscription?.cancel();
@@ -90,7 +96,8 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   Future<Result<List<Message>>> loadMessages(String chatId) async {
-    state = state.copyWith(isLoading: true, clearError: true, activeChatId: chatId);
+    state =
+        state.copyWith(isLoading: true, clearError: true, activeChatId: chatId);
     try {
       final messages = await repository.fetchMessages(chatId);
       final map = Map<String, List<Message>>.from(state.messagesByChat);
@@ -105,7 +112,9 @@ class ChatController extends StateNotifier<ChatState> {
 
   Future<Result<Message>> sendMessage(String chatId, String content) async {
     try {
-      final message = await repository.sendMessage(chatId, content);
+      final clientId = _generateClientId();
+      final message =
+          await repository.sendMessage(chatId, content, clientId: clientId);
       _upsertMessage(chatId, message.copyWith(isMine: true));
       return Success(message);
     } on ApiException catch (error) {
@@ -113,14 +122,18 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  String _generateClientId() {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    final rand = _random.nextInt(0x7fffffff);
+    return '$now-$rand';
+  }
+
   Future<void> muteChat(String chatId, {int? durationMinutes}) async {
     try {
       await repository.muteChat(chatId, durationMinutes: durationMinutes);
       final updatedChats = state.chats
           .map(
-            (chat) => chat.id == chatId
-                ? chat.copyWith(isMuted: true)
-                : chat,
+            (chat) => chat.id == chatId ? chat.copyWith(isMuted: true) : chat,
           )
           .toList();
       state = state.copyWith(chats: updatedChats);
@@ -140,7 +153,8 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   void _upsertMessage(String chatId, Message message) {
-    final existing = List<Message>.from(state.messagesByChat[chatId] ?? const []);
+    final existing =
+        List<Message>.from(state.messagesByChat[chatId] ?? const []);
     final index = existing.indexWhere((item) => item.id == message.id);
     if (index >= 0) {
       existing[index] = message;

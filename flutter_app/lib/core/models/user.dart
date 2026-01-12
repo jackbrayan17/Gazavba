@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../utils/url_utils.dart';
+
 class User {
   const User({
     required this.id,
@@ -16,7 +18,7 @@ class User {
     String? avatarUrl;
     Uint8List? avatarBytes;
     if (avatarValue is String) {
-      avatarUrl = avatarValue;
+      avatarUrl = UrlUtils.resolveMediaUrl(avatarValue);
     } else if (avatarValue is Uint8List) {
       avatarBytes = avatarValue;
     } else if (avatarValue is List<int>) {

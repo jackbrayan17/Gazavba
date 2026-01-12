@@ -16,6 +16,9 @@ enum SocketEventType {
   newMessage,
   messageSent,
   messageError,
+  messageRead,
+  messageDelivered,
+  chatRead,
   userOnline,
   userOffline,
   typing,
@@ -47,6 +50,12 @@ class SocketService {
 
     final opts = io.OptionBuilder()
         .setTransports(['websocket'])
+        .enableForceNew()
+        .enableReconnection()
+        .setReconnectionAttempts(50)
+        .setReconnectionDelay(500)
+        .setReconnectionDelayMax(2000)
+        .setTimeout(5000)
         .disableAutoConnect()
         .setExtraHeaders({
           if (resolvedToken != null) 'Authorization': 'Bearer $resolvedToken',
@@ -61,7 +70,8 @@ class SocketService {
     });
     socket.onDisconnect((_) {
       _logger.warning('Socket disconnected');
-      _eventController.add(const SocketEvent(SocketEventType.disconnected, null));
+      _eventController
+          .add(const SocketEvent(SocketEventType.disconnected, null));
     });
     socket.onError((err) {
       _logger.severe('Socket error', err);
@@ -71,8 +81,21 @@ class SocketService {
       _logger.fine('Received new_message event');
       _eventController.add(SocketEvent(SocketEventType.newMessage, data));
     });
+    socket.on('message_new', (data) {
+      _logger.fine('Received message_new event');
+      _eventController.add(SocketEvent(SocketEventType.newMessage, data));
+    });
     socket.on('message_sent', (data) {
       _eventController.add(SocketEvent(SocketEventType.messageSent, data));
+    });
+    socket.on('message_read', (data) {
+      _eventController.add(SocketEvent(SocketEventType.messageRead, data));
+    });
+    socket.on('message_delivered', (data) {
+      _eventController.add(SocketEvent(SocketEventType.messageDelivered, data));
+    });
+    socket.on('chat_read', (data) {
+      _eventController.add(SocketEvent(SocketEventType.chatRead, data));
     });
     socket.on('message_error', (data) {
       _eventController.add(SocketEvent(SocketEventType.messageError, data));

@@ -6,8 +6,10 @@ import 'package:intl/intl.dart';
 import '../../../core/models/chat.dart';
 import '../../../core/models/message.dart';
 import '../../../core/models/user.dart';
+import '../../../core/models/wallet.dart';
 import '../../auth/controllers/auth_controller.dart';
 import '../controllers/chat_controller.dart';
+import '../../wallet/data/wallet_repository.dart';
 
 class ChatsScreen extends ConsumerStatefulWidget {
   const ChatsScreen({super.key});
@@ -40,22 +42,40 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final chatState = ref.watch(chatControllerProvider);
+    final walletInfo = ref.watch(walletInfoProvider);
 
     final chats = chatState.chats.where((chat) {
       if (_query.isEmpty) return true;
-      final haystack = '${chat.title} ${_participants(chat.participants)}'.toLowerCase();
+      final haystack =
+          '${chat.title} ${_participants(chat.participants)}'.toLowerCase();
       return haystack.contains(_query);
     }).toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     return Scaffold(
       appBar: AppBar(
+        leadingWidth: 56,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+              'assets/images/gazavba.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
         title: const Text('Discussions'),
         actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            child: _WalletBadge(walletInfo: walletInfo),
+          ),
           IconButton(
             tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.read(chatControllerProvider.notifier).loadChats(),
+            onPressed: () =>
+                ref.read(chatControllerProvider.notifier).loadChats(),
           ),
         ],
       ),
@@ -79,17 +99,20 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => ref.read(chatControllerProvider.notifier).loadChats(),
+              onRefresh: () =>
+                  ref.read(chatControllerProvider.notifier).loadChats(),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: chatState.isLoading && chats.isEmpty
                     ? const _ChatsLoadingState()
                     : chats.isEmpty
-                        ? _EmptyState(isAuthenticated: authState.isAuthenticated)
+                        ? _EmptyState(
+                            isAuthenticated: authState.isAuthenticated)
                         : ListView.separated(
                             padding: const EdgeInsets.only(bottom: 24),
                             itemCount: chats.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1, indent: 88),
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1, indent: 88),
                             itemBuilder: (context, index) {
                               final chat = chats[index];
                               return _ChatListTile(chat: chat);
@@ -116,7 +139,8 @@ class _ChatListTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lastMessage = chat.lastMessage;
-    final subtitle = lastMessage != null ? _formatMessage(lastMessage) : 'Nouveau chat';
+    final subtitle =
+        lastMessage != null ? _formatMessage(lastMessage) : 'Nouveau chat';
     final time = lastMessage?.createdAt ?? chat.updatedAt;
     final timeLabel = DateFormat.Hm().format(time);
     final avatarImage = chat.avatarBytes != null
@@ -155,9 +179,10 @@ class _ChatListTile extends ConsumerWidget {
                       Expanded(
                         child: Text(
                           chat.title,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -184,17 +209,16 @@ class _ChatListTile extends ConsumerWidget {
             if (chat.unreadCount > 0)
               Container(
                 margin: const EdgeInsets.only(left: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.primary,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   chat.unreadCount.toString(),
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelSmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.onPrimary),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimary),
                 ),
               ),
           ],
@@ -220,14 +244,16 @@ class _ChatsLoadingState extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        return ShimmerWidget(height: 64, borderRadius: BorderRadius.circular(20));
+        return ShimmerWidget(
+            height: 64, borderRadius: BorderRadius.circular(20));
       },
     );
   }
 }
 
 class ShimmerWidget extends StatefulWidget {
-  const ShimmerWidget({required this.height, required this.borderRadius, super.key});
+  const ShimmerWidget(
+      {required this.height, required this.borderRadius, super.key});
 
   final double height;
   final BorderRadius borderRadius;
@@ -305,7 +331,8 @@ class _EmptyState extends StatelessWidget {
               isAuthenticated
                   ? 'Aucune conversation pour le moment'
                   : 'Connectez-vous pour voir vos conversations',
-              style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              style:
+                  textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
@@ -318,6 +345,59 @@ class _EmptyState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _WalletBadge extends StatelessWidget {
+  const _WalletBadge({required this.walletInfo});
+
+  final AsyncValue<WalletInfo?> walletInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    String label = 'No Wallet';
+    Color background = colors.surfaceVariant;
+    Color foreground = colors.onSurfaceVariant;
+
+    walletInfo.when(
+      data: (wallet) {
+        if (wallet?.walletExists == true) {
+          label = wallet!.displayBalance;
+          background = colors.secondaryContainer;
+          foreground = colors.onSecondaryContainer;
+        } else {
+          label = 'No Wallet';
+        }
+      },
+      loading: () {
+        label = 'Wallet...';
+      },
+      error: (_, __) {
+        label = 'No Wallet';
+        background = colors.surfaceVariant;
+        foreground = colors.onSurfaceVariant;
+      },
+    );
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 28),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.outline.withOpacity(0.25)),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }

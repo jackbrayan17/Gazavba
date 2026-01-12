@@ -7,9 +7,16 @@ class HomeShell extends StatelessWidget {
   final Widget child;
 
   static const _tabs = [
-    _HomeTab(path: '/home/chats', icon: Icons.chat_bubble_outline_rounded, label: 'Discussions'),
-    _HomeTab(path: '/home/status', icon: Icons.timelapse_rounded, label: 'Statuts'),
-    _HomeTab(path: '/home/profile', icon: Icons.person_outline_rounded, label: 'Profil'),
+    _HomeTab(
+        path: '/home/chats',
+        icon: Icons.chat_bubble_outline_rounded,
+        label: 'Discussions'),
+    _HomeTab(
+        path: '/home/status', icon: Icons.timelapse_rounded, label: 'Statuts'),
+    _HomeTab(
+        path: '/home/profile',
+        icon: Icons.person_outline_rounded,
+        label: 'Profil'),
   ];
 
   int _indexForLocation(String location) {

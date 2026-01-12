@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/status.dart';
+import '../../../core/models/contact.dart';
 import '../../../core/utils/exceptions.dart';
 import '../../../core/utils/result.dart';
 import '../../auth/controllers/auth_controller.dart';
@@ -78,16 +79,19 @@ class StatusController extends StateNotifier<StatusState> {
   final Logger _logger;
   Timer? _refreshTimer;
   SharedPreferences? _prefs;
+  String? _userId;
 
   static const _mutedKey = 'gazavba_status_muted';
   static const _blockedKey = 'gazavba_status_blocked';
 
   Future<void> onAuthStateChanged(AuthState authState) async {
     if (authState.isAuthenticated) {
+      _userId = authState.user?.id;
       await loadStatuses();
       _startRefreshLoop();
     } else {
       _refreshTimer?.cancel();
+      _userId = null;
       this.state = const StatusState();
     }
   }
@@ -105,7 +109,13 @@ class StatusController extends StateNotifier<StatusState> {
         unseenCount: unseen,
         isLoading: false,
       );
-      _logger.info('Loaded ${statuses.length} statuses (unseen: $unseen)');
+      final contactStatuses =
+          filtered.where((s) => s.userId != _userId).toList();
+      final viewed = contactStatuses.where((s) => s.hasViewed).length;
+      final unviewed = contactStatuses.length - viewed;
+      _logger.info(
+        'Loaded ${statuses.length} statuses (unseen: $unseen) | contacts viewed: $viewed, unviewed: $unviewed | ids=${filtered.map((s) => s.userId).toList()}',
+      );
     } on ApiException catch (error) {
       this.state = state.copyWith(isLoading: false, error: error.message);
       _logger.warning('Failed to load statuses: ${error.message}');
@@ -130,7 +140,8 @@ class StatusController extends StateNotifier<StatusState> {
     String? caption,
   }) async {
     try {
-      final status = await repository.createMediaStatus(file: file, content: caption);
+      final status =
+          await repository.createMediaStatus(file: file, content: caption);
       final updated = [status, ...state.statuses];
       this.state = state.copyWith(statuses: updated);
       _logger.info('Published media status ${status.id}');
@@ -144,13 +155,14 @@ class StatusController extends StateNotifier<StatusState> {
   Future<void> markViewed(String statusId) async {
     try {
       await repository.markAsViewed(statusId);
-      final updated = state.statuses
-          .map(
-            (status) => status.id == statusId
-                ? status.copyWith(hasViewed: true, viewCount: status.viewCount + 1)
-                : status,
-          )
-          .toList();
+      final updated = state.statuses.map(
+        (status) {
+          if (status.id != statusId) return status;
+          if (status.hasViewed) return status;
+          return status.copyWith(
+              hasViewed: true, viewCount: status.viewCount + 1);
+        },
+      ).toList();
       state = state.copyWith(statuses: updated);
     } catch (error) {
       _logger.warning('Failed to mark status $statusId as viewed: $error');
@@ -190,11 +202,13 @@ class StatusController extends StateNotifier<StatusState> {
 
   Future<Result<String>> download(Status status) async {
     if (status.mediaUrl == null) {
-      return Failure(ApiException('Ce statut ne contient pas de média à enregistrer.'));
+      return Failure(
+          ApiException('Ce statut ne contient pas de média à enregistrer.'));
     }
     final granted = await _ensureStoragePermissions();
     if (!granted) {
-      return Failure(ApiException('Permission requise pour enregistrer le statut.'));
+      return Failure(
+          ApiException('Permission requise pour enregistrer le statut.'));
     }
     try {
       final directory = await _resolveStatusDirectory();
@@ -205,6 +219,26 @@ class StatusController extends StateNotifier<StatusState> {
       return Success(path);
     } catch (error) {
       return Failure(error);
+    }
+  }
+
+  Future<Result<List<Contact>>> fetchViewers(String statusId) async {
+    try {
+      final viewers = await repository.fetchViewers(statusId);
+      _logger.fine('Fetched ${viewers.length} viewers for status $statusId');
+      return Success(viewers);
+    } on ApiException catch (error) {
+      _logger.warning(
+        'Failed to fetch viewers for $statusId (code=${error.statusCode}): ${error.message}',
+      );
+      // If forbidden (not owner), surface empty list rather than error.
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        return const Success(<Contact>[]);
+      }
+      return Failure(error);
+    } catch (error) {
+      _logger.warning('Failed to fetch viewers for $statusId: $error');
+      return Failure(ApiException(error.toString()));
     }
   }
 
@@ -255,7 +289,8 @@ class StatusController extends StateNotifier<StatusState> {
   Future<Directory> _resolveStatusDirectory() async {
     Directory base;
     if (Platform.isAndroid) {
-      base = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+      base = await getExternalStorageDirectory() ??
+          await getApplicationDocumentsDirectory();
     } else {
       base = await getApplicationDocumentsDirectory();
     }

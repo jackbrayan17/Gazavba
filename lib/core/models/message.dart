@@ -1,3 +1,5 @@
+import '../utils/url_utils.dart';
+
 class Message {
   const Message({
     required this.id,
@@ -12,10 +14,12 @@ class Message {
     this.senderName,
     this.senderAvatar,
     this.readAt,
+    this.clientId,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
-    final text = (json['text'] ?? json['content'] ?? json['message'] ?? '') as String;
+    final text =
+        (json['text'] ?? json['content'] ?? json['message'] ?? '') as String;
     return Message(
       id: json['id'].toString(),
       chatId: json['chatId']?.toString() ??
@@ -25,20 +29,27 @@ class Message {
       senderId: json['senderId']?.toString() ?? json['from']?.toString() ?? '',
       content: text,
       createdAt: DateTime.tryParse(
-        json['createdAt'] as String? ??
-            json['sentAt'] as String? ??
-            json['timestamp'] as String? ??
-            '',
-      ) ??
+            json['createdAt'] as String? ??
+                json['sentAt'] as String? ??
+                json['timestamp'] as String? ??
+                '',
+          ) ??
           DateTime.now(),
       isMine: json['isMine'] == true,
       status: json['status'] as String? ?? json['deliveryStatus'] as String?,
       messageType: (json['messageType'] ?? json['type'] ?? 'text') as String,
-      mediaUrl: json['mediaUrl'] as String? ?? json['media_url'] as String?,
-      senderName: json['senderName'] as String? ?? json['sender_name'] as String?,
-      senderAvatar: json['senderAvatar'] as String? ?? json['sender_avatar'] as String?,
+      mediaUrl: UrlUtils.resolveMediaUrl(
+        json['mediaUrl'] as String? ?? json['media_url'] as String?,
+      ),
+      senderName:
+          json['senderName'] as String? ?? json['sender_name'] as String?,
+      senderAvatar: UrlUtils.resolveMediaUrl(
+        json['senderAvatar'] as String? ?? json['sender_avatar'] as String?,
+      ),
       readAt: DateTime.tryParse(
           json['readAt'] as String? ?? json['read_at'] as String? ?? ''),
+      clientId:
+          json['clientId']?.toString() ?? json['client_id']?.toString() ?? '',
     );
   }
 
@@ -54,6 +65,7 @@ class Message {
   final String? senderName;
   final String? senderAvatar;
   final DateTime? readAt;
+  final String? clientId;
 
   Message copyWith({
     bool? isMine,
@@ -63,6 +75,7 @@ class Message {
     String? senderName,
     String? senderAvatar,
     DateTime? readAt,
+    String? clientId,
   }) {
     return Message(
       id: id,
@@ -77,6 +90,7 @@ class Message {
       senderName: senderName ?? this.senderName,
       senderAvatar: senderAvatar ?? this.senderAvatar,
       readAt: readAt ?? this.readAt,
+      clientId: clientId ?? this.clientId,
     );
   }
 }

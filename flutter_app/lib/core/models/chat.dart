@@ -24,11 +24,13 @@ class Chat {
       participants: participantsJson
           .map((item) => User.fromJson(item as Map<String, dynamic>))
           .toList(),
-      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
       lastMessage: json['lastMessage'] != null
           ? Message.fromJson(json['lastMessage'] as Map<String, dynamic>)
           : null,
-      unreadCount: json['unreadCount'] is num ? (json['unreadCount'] as num).toInt() : 0,
+      unreadCount:
+          json['unreadCount'] is num ? (json['unreadCount'] as num).toInt() : 0,
       isMuted: json['isMuted'] == true,
     );
   }
@@ -41,7 +43,8 @@ class Chat {
   final int unreadCount;
   final bool isMuted;
 
-  String? get avatarUrl => participants.firstWhereOrNull((p) => p.avatarUrl != null)?.avatarUrl;
+  String? get avatarUrl =>
+      participants.firstWhereOrNull((p) => p.avatarUrl != null)?.avatarUrl;
   Uint8List? get avatarBytes =>
       participants.firstWhereOrNull((p) => p.avatarBytes != null)?.avatarBytes;
 

@@ -30,7 +30,8 @@ class LogService {
     _subscription?.cancel();
     _subscription = Logger.root.onRecord.listen((record) {
       final timestamp = record.time.toIso8601String();
-      final message = '[${record.loggerName}] ${record.level.name}: ${record.message}';
+      final message =
+          '[${record.loggerName}] ${record.level.name}: ${record.message}';
       final line = '[$timestamp] $message';
       debugPrint(line);
       _sink?.writeln(line);
